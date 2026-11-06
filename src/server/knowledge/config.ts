@@ -1,7 +1,7 @@
 import "server-only";
 import { env } from "@/server/env";
 import { ZeroGEmbeddingProvider, type EmbeddingProvider } from "./embeddings";
-import { FirecrawlCrawler, type Crawler } from "./firecrawl";
+import { FirecrawlCrawler } from "./firecrawl";
 
 export function embeddingProvider(): EmbeddingProvider {
   const e = env();
@@ -14,7 +14,7 @@ export function embeddingProvider(): EmbeddingProvider {
   });
 }
 
-export function crawler(): Crawler {
+export function crawler(): FirecrawlCrawler {
   return new FirecrawlCrawler(env().FIRECRAWL_API_KEY);
 }
 

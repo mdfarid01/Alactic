@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Bot, BookOpen, MessagesSquare, ShieldCheck, Users } from "lucide-react";
+import { Bot, BookOpen, Inbox, Newspaper, Receipt, ShieldCheck, Users } from "lucide-react";
+import { MarkdownLite } from "@/components/markdown-lite";
+import { RefreshDigestButton } from "@/components/dashboard/refresh-digest-button";
+import { latestDigest, utcDay } from "@/server/digest/service";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/server/db/client";
@@ -8,6 +11,7 @@ import { getPageOrgScope } from "@/server/orgs/page-scope";
 import { countMembers, roleAtLeast } from "@/server/orgs/service";
 import { listAgents } from "@/server/agents/service";
 import { verificationSummary } from "@/server/runtime/run-agent";
+import { openGapCounts } from "@/server/gaps/service";
 import { AgentStatusBadge, TrustBadge } from "@/components/agents/trust-badge";
 
 export default function OrgOverviewPage({ params }: PageProps<"/dashboard/[orgSlug]">) {
@@ -21,14 +25,43 @@ export default function OrgOverviewPage({ params }: PageProps<"/dashboard/[orgSl
 async function Overview({ params }: { params: PageProps<"/dashboard/[orgSlug]">["params"] }) {
   const { orgSlug } = await params;
   const scope = await getPageOrgScope(orgSlug);
-  const [members, agents, verification] = await Promise.all([
+  const [members, agents, verification, gaps] = await Promise.all([
     countMembers(db(), scope),
     listAgents(db(), scope),
     verificationSummary(db(), scope.orgId),
+    openGapCounts(db(), scope),
   ]);
+  const digest = await latestDigest(db(), scope.orgId);
+  const waiting = Number((digest?.stats as { openHandoffs?: number } | undefined)?.openHandoffs ?? 0);
+  const gapAgents = agents.filter((a) => gaps.has(a.id)).sort((x, y) => gaps.get(y.id)!.asks - gaps.get(x.id)!.asks);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <Newspaper className="size-4 text-brand" aria-hidden /> {digest?.day === utcDay() ? "Today's briefing" : "Briefing"}
+            </CardTitle>
+            {roleAtLeast(scope.role, "admin") ? <RefreshDigestButton orgSlug={scope.orgSlug} label={digest ? "Refresh" : "Write today's briefing"} /> : null}
+          </div>
+          <CardDescription>
+            {digest
+              ? `${digest.day} (UTC) · last 24 hours across your agents${waiting ? ` · ${waiting} customer(s) waiting for a person` : ""}`
+              : "A daily summary of what needs your attention, written on 0G every morning at 07:00 UTC."}
+          </CardDescription>
+        </CardHeader>
+        {digest ? (
+          <CardContent className="space-y-2">
+            <MarkdownLite text={digest.content} className="space-y-2 text-sm" />
+            {digest.inferenceId ? (
+              <Link href={`/proof/${digest.inferenceId}`} target="_blank" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline">
+                <Receipt className="size-3" /> Written on 0G · proof
+              </Link>
+            ) : null}
+          </CardContent>
+        ) : null}
+      </Card>
       <Card className="md:col-span-2">
         <CardHeader>
           <div className="flex items-center justify-between gap-2">
@@ -70,7 +103,32 @@ async function Overview({ params }: { params: PageProps<"/dashboard/[orgSlug]">[
       </Card>
 
       <EmptyStat icon={BookOpen} title="Knowledge" body="Website, document and FAQ sources with indexing status will appear here." />
-      <EmptyStat icon={MessagesSquare} title="Conversations" body="Recent conversations across all channels will appear here." />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Inbox className="size-4 text-brand" aria-hidden /> Unanswered questions
+          </CardTitle>
+          <CardDescription>Questions customers asked that your agents couldn&apos;t answer. Answer them to teach the agent.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {gapAgents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing to review.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {gapAgents.slice(0, 4).map((a) => (
+                <li key={a.id}>
+                  <Link href={`/dashboard/${scope.orgSlug}/agents/${a.slug}/inbox`} className="flex items-center justify-between gap-2 underline-offset-4 hover:underline">
+                    <span>{a.name}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {gaps.get(a.id)!.gaps} open · {gaps.get(a.id)!.asks} asks
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
       <VerificationActivity summary={verification} />
       <Card>
         <CardHeader>
