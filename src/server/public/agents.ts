@@ -50,9 +50,10 @@ export async function publicConversationHistory(db: Database, agent: { orgId: st
       citations: messages.citations,
       isFallback: messages.isFallback,
       inferenceId: messages.inferenceId,
-      verification: sql<string | null>`(
-        select v.status from verification_records v where v.inference_id = ${messages.inferenceId}
-        order by case v.status when 'failed' then 0 when 'verified' then 1 when 'unavailable' then 2 else 3 end limit 1)`,
+      verification: sql<{ status: "verified" | "failed" | "unavailable" | "not_requested"; method: "router" | "independent" } | null>`(
+        select json_build_object('status', v.status, 'method', v.method) from verification_records v where v.inference_id = ${messages.inferenceId}
+        order by case v.status when 'failed' then 0 when 'verified' then 1 when 'unavailable' then 2 else 3 end,
+          case v.method when 'independent' then 0 else 1 end limit 1)`,
     })
     .from(messages)
     .where(and(eq(messages.conversationId, conv.id), eq(messages.orgId, agent.orgId)))

@@ -71,7 +71,10 @@ Deferred: live spikes (need key), streaming (D14), independent verification (str
 3. BYO name flow: show the record values, the business signs in its wallet (ENSjs v2 helpers), then we verify by resolution.
 4. Public identity page with live resolution + sync status.
 
-## Phase 6 — Playground & deployment (M)
+## Phase 6 — Playground & deployment (M) ✅ public chat + widget implemented 2026-11-06
+
+Delivered: publish / unpublish / resume (immutable versions), Deploy tab (public link, widget snippet, allowed sites), public chat `/a/[slug]` (anonymous visitors with a hashed visitor token, history restore), widget `public/widget.js` + `/embed/[slug]` (sandboxed iframe, CSP `frame-ancestors` from the agent's allowed sites), per-answer public verification page `/v/[inferenceId]` (evidence only, no content, public channels only), demo host page `/demo/[slug]`, rate limits (12/min per client hash, 60/min per agent, plus the daily org cap), clickjacking headers. Catalog resilience: 15 s timeout + retry + last-good fallback. 147 tests. Live E2E against 0G mainnet as a stranger with no wallet: answer, citation, independent TEE verification, history, widget and CSP all pass.
+
 
 Playground (draft config, citations, inference + verification status, readable errors), publish workflow, public chat page `/a/[slug]`, widget loader + iframe + allowed origins + CSP, public verification page per message/inference (shares only inference ID, model, trust mode, provider address, verification status, never message content unless the visitor owns it).
 

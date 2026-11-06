@@ -13,7 +13,7 @@ Alactic lets a business create an AI customer support agent from its own website
 
 ## Status
 
-**Phase 4 — 0G inference complete, awaiting review.** Working today: wallet sign-in, organizations and members, agent builder, knowledge sources with background indexing, and a playground where agents answer via the 0G Compute Router with citations and an honest verification status. Live answers need `ZG_ROUTER_API_KEY` (and `FIRECRAWL_API_KEY` for websites). Without them the app shows the fallback answer and says why. ENS (Phase 5) and publishing (Phase 6) are next.
+**Public chat page, website widget and verification pages are live (Phase 6).** Earlier: **Phase 4, 0G inference complete.** Working today: wallet sign-in, organizations and members, agent builder, knowledge sources with background indexing, and a playground where agents answer via the 0G Compute Router with citations and an honest verification status. Live answers need `ZG_ROUTER_API_KEY` (and `FIRECRAWL_API_KEY` for websites). Without them the app shows the fallback answer and says why. ENS (Phase 5) and publishing (Phase 6) are next.
 
 | Doc | Contents |
 |---|---|

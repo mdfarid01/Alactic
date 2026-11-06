@@ -45,7 +45,7 @@ export type BuilderModel = {
 };
 
 export type BuilderCatalog =
-  | { ok: true; models: BuilderModel[]; availability: Record<string, Record<TrustModeOption, boolean>> }
+  | { ok: true; models: BuilderModel[]; availability: Record<string, Record<TrustModeOption, boolean>>; staleSince?: string }
   | { ok: false; error: string };
 
 const TRUST_ICONS = { private: Lock, verified: ShieldCheck, standard: Cpu } as const;
@@ -228,6 +228,12 @@ export function AgentBuilderForm({
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5">
+            {catalog.ok && catalog.staleSince ? (
+              <p className="flex gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+                The 0G model catalog is slow to respond right now. Showing the list last fetched from 0G; provider health isn&apos;t shown.
+              </p>
+            ) : null}
             {!catalog.ok ? (
               <p className="flex gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
@@ -372,7 +378,7 @@ export function AgentBuilderForm({
             ) : state?.ok ? (
               <span className="text-success">Draft saved.</span>
             ) : (
-              <span className="text-muted-foreground">Changes are saved to the draft. Publishing arrives in a later release.</span>
+              <span className="text-muted-foreground">Changes are saved to the draft. Publish them from the Deploy tab.</span>
             )}
           </div>
           <Button type="submit" disabled={pending || (catalog.ok && (!trustSupported || !modelKnown))}>
