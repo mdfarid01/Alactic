@@ -43,6 +43,62 @@
       "when": 1793982396848,
       "tag": "0005_drop_cost_neuron",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793991175364,
+      "tag": "0006_public_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793992092341,
+      "tag": "0007_knowledge_gaps",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793993077424,
+      "tag": "0008_media_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793994378691,
+      "tag": "0009_connectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793996108762,
+      "tag": "0010_answer_fingerprint",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793996344436,
+      "tag": "0011_agent_tests",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793996998305,
+      "tag": "0012_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793997357865,
+      "tag": "0013_org_digests",
+      "breakpoints": true
     }
   ]
 }

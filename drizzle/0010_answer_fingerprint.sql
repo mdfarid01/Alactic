@@ -1,0 +1,1 @@
+ALTER TABLE "inference_records" ADD COLUMN "answer_sha256" text;
