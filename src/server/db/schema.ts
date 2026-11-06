@@ -142,6 +142,8 @@ export const agents = pgTable(
     status: agentStatus("status").notNull().default("draft"),
     /** Currently published (immutable) config version, if any. Integrity enforced by a composite FK in SQL. */
     publishedConfigId: uuid("published_config_id"),
+    /** Origins allowed to embed the website widget (CSP frame-ancestors), e.g. https://shop.example.com. */
+    allowedOrigins: text("allowed_origins").array().notNull().default(sql`'{}'::text[]`),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -348,6 +350,7 @@ export const conversations = pgTable(
     foreignKey({ name: "conversations_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
     unique("conversations_tenant_unique").on(t.id, t.agentId, t.orgId),
     index("conversations_agent_recent_idx").on(t.agentId, t.lastMessageAt),
+    check("conversations_public_needs_visitor", sql`${t.channel} not in ('web', 'widget') or ${t.visitorTokenHash} is not null`),
   ],
 );
 
@@ -452,4 +455,17 @@ export const messages = pgTable(
     index("messages_conversation_time_idx").on(t.conversationId, t.createdAt),
     check("messages_content_length", sql`char_length(${t.content}) <= 20000`),
   ],
+);
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+/** Fixed-window counters for public endpoints. Keys never contain raw IPs (salted hashes only). */
+export const rateLimitBuckets = pgTable(
+  "rate_limit_buckets",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] }), index("rate_limit_buckets_window_idx").on(t.windowStart)],
 );

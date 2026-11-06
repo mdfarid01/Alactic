@@ -16,6 +16,7 @@ import { EmbeddingError } from "@/server/knowledge/embeddings";
 import { retrievePassages, type RetrievedPassage } from "@/server/knowledge/retrieval";
 import { InferenceError, verificationStatusFrom, type ChatClient } from "@/server/inference/router-client";
 import type { TeeVerification } from "@/server/inference/tee-verifier";
+import { sha256 } from "@/server/knowledge/normalize";
 import { extractCitations, isFallbackAnswer } from "./citations";
 import { buildMessages } from "./prompt";
 
@@ -42,6 +43,8 @@ export type RunAgentInput = {
   conversationId?: string | null;
   userMessage: string;
   startedBy?: string | null;
+  /** Anonymous public visitors (web/widget): required; continuing a conversation requires the same token. */
+  visitorToken?: string | null;
 };
 
 export type RunAgentErrorCode =
@@ -112,7 +115,13 @@ export async function runAgent(deps: RunAgentDeps, input: RunAgentInput): Promis
   const config = await loadConfig(db, input.agent, input.configVersion);
   if (!config) throw new RunAgentError("agent_not_found", "Agent not found.");
 
-  // Conversation (must belong to this agent, org and channel).
+  const isPublic = input.channel === "web" || input.channel === "widget";
+  const visitorHash = input.visitorToken ? sha256(input.visitorToken) : null;
+  if (isPublic && (!input.visitorToken || input.visitorToken.length < 20 || input.visitorToken.length > 100)) {
+    throw new RunAgentError("invalid_message", "Missing visitor session. Reload the page.");
+  }
+
+  // Conversation (must belong to this agent, org and channel, and for public channels to this visitor).
   let conversationId = input.conversationId ?? null;
   if (conversationId) {
     const [c] = await db
@@ -124,6 +133,7 @@ export async function runAgent(deps: RunAgentDeps, input: RunAgentInput): Promis
           eq(conversations.agentId, input.agent.agentId),
           eq(conversations.orgId, input.agent.orgId),
           eq(conversations.channel, input.channel),
+          isPublic ? eq(conversations.visitorTokenHash, visitorHash!) : sql`true`,
         ),
       )
       .limit(1);
@@ -131,7 +141,7 @@ export async function runAgent(deps: RunAgentDeps, input: RunAgentInput): Promis
   } else {
     const [c] = await db
       .insert(conversations)
-      .values({ orgId: input.agent.orgId, agentId: input.agent.agentId, channel: input.channel, startedBy: input.startedBy ?? null })
+      .values({ orgId: input.agent.orgId, agentId: input.agent.agentId, channel: input.channel, startedBy: input.startedBy ?? null, visitorTokenHash: visitorHash })
       .returning({ id: conversations.id });
     conversationId = c.id;
   }
