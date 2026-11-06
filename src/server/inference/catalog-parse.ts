@@ -15,7 +15,12 @@ export type CatalogModel = {
   pricingUsd: { prompt: string | null; completion: string | null };
   /** Trust modes this model can be requested with, based on its verifiability (capability, not live health). */
   trustModes: TrustModeOption[];
+  /** architecture.input_modalities, e.g. ["text", "image"]. */
+  inputModalities: string[];
 };
+
+/** A speech-to-text model (type "speech-to-text"), for voice questions. */
+export type SpeechModel = { id: string; verifiability: Verifiability; trustModes: TrustModeOption[] };
 
 export type TrustAvailability = Record<TrustModeOption, boolean>;
 
@@ -29,6 +34,7 @@ const modelSchema = z
     verifiability: z.string().nullable().optional(),
     supported_parameters: z.array(z.string()).optional(),
     pricing_usd: z.record(z.string(), z.unknown()).optional(),
+    architecture: z.object({ input_modalities: z.array(z.string()).optional() }).passthrough().nullish(),
   })
   .passthrough();
 
@@ -68,11 +74,27 @@ export function parseChatModels(json: unknown): CatalogModel[] {
       supportedParameters: m.data.supported_parameters ?? [],
       pricingUsd: { prompt: price("prompt"), completion: price("completion") },
       trustModes: trustModesFor(verifiability),
+      inputModalities: m.data.architecture?.input_modalities ?? ["text"],
     });
   }
   // TEE-capable models first, then alphabetical.
   const rank = (v: Verifiability) => (v === "TeeML" ? 0 : v === "TeeTLS" ? 1 : 2);
   return models.sort((a, b) => rank(a.verifiability) - rank(b.verifiability) || a.id.localeCompare(b.id));
+}
+
+/** Parse GET /v1/models into speech-to-text models. */
+export function parseSpeechModels(json: unknown): SpeechModel[] {
+  const list = listSchema.safeParse(json);
+  if (!list.success) throw new Error("Unexpected 0G model catalog format");
+  const out: SpeechModel[] = [];
+  for (const raw of list.data.data) {
+    const m = modelSchema.safeParse(raw);
+    if (!m.success || m.data.type !== "speech-to-text") continue;
+    if (m.data.provider_count !== undefined && m.data.provider_count < 1) continue;
+    const verifiability = normalizeVerifiability(m.data.verifiability);
+    out.push({ id: m.data.id, verifiability, trustModes: trustModesFor(verifiability) });
+  }
+  return out;
 }
 
 const providerSchema = z

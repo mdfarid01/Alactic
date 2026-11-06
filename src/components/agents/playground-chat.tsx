@@ -7,6 +7,7 @@ import { TrustBadge } from "@/components/agents/trust-badge";
 import { VerificationBadge } from "@/components/agents/verification-badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownLite } from "@/components/markdown-lite";
 import type { RunAgentResult } from "@/server/runtime/run-agent";
 
 type Turn =
@@ -129,7 +130,7 @@ function AssistantTurn({ result }: { result: RunAgentResult }) {
   const vView = verification ?? { status: "no_inference" as const };
   return (
     <div className="max-w-[90%] space-y-2">
-      <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{reply.content}</div>
+      <MarkdownLite text={reply.content} className="space-y-2 rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm break-words" />
       {reply.citations.length ? (
         <ul className="space-y-1">
           {reply.citations.map((c) => {

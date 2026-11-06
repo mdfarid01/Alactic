@@ -13,9 +13,12 @@ let serviceReader: ReturnType<typeof chainServiceReader> | undefined;
 export function runtimeDeps(): RunAgentDeps {
   const e = env();
   serviceReader ??= chainServiceReader({ rpcUrl: e.ZG_CHAIN_RPC_URL, chainId: e.ZG_CHAIN_ID, contract: e.ZG_INFERENCE_CONTRACT as Hex });
+  const router = new RouterChatClient({ baseUrl: e.ZG_ROUTER_BASE_URL, apiKey: e.ZG_ROUTER_API_KEY });
   return {
     db: db(),
-    chat: new RouterChatClient({ baseUrl: e.ZG_ROUTER_BASE_URL, apiKey: e.ZG_ROUTER_API_KEY }),
+    chat: router,
+    transcriber: router,
+    transcriptionModel: e.TRANSCRIPTION_MODEL,
     embedder: embeddingProvider(),
     dailyOrgLimit: e.INFERENCE_DAILY_ORG_LIMIT,
     modelSupports: async (modelId, parameter) => {
