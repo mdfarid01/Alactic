@@ -71,13 +71,36 @@ Deferred: live spikes (need key), streaming (D14), independent verification (str
 3. BYO name flow: show the record values, the business signs in its wallet (ENSjs v2 helpers), then we verify by resolution.
 4. Public identity page with live resolution + sync status.
 
-## Phase 6 — Playground & deployment (M)
+## Phase 6 — Playground & deployment (M) ✅ core implemented 2026-11-07, awaiting review
+
+Done: publish / pause / resume (Deploy tab), public chat page `/a/[slug]`, widget (`public/widget.js` + `/embed/[slug]` iframe), public chat API with visitor-token ownership and rate limits, **public proof receipt** `/proof/[inferenceId]` (inference metadata + verification checks, never content) with **in-browser verification** (the visitor's browser reads 0G Chain and the provider signature directly), demo seed `pnpm seed:demo`. Tests: `tests/public.test.ts`.
+Also done: **knowledge-gap inbox** (Inbox tab + org overview card): questions answered with the fallback are recorded, near-duplicates merged by embedding similarity (threshold calibrated live), and one click turns an answer into an indexed FAQ.
+Also done: **voice notes and screenshots** in the public chat and widget (whisper-large-v3 and the agent's vision model on 0G, each step with its own proof receipt), safe Markdown rendering of answers.
+Not yet: widget origin allow-list + `frame-ancestors` CSP; voice/screenshots in the dashboard playground.
+
+Original scope:
 
 Playground (draft config, citations, inference + verification status, readable errors), publish workflow, public chat page `/a/[slug]`, widget loader + iframe + allowed origins + CSP, public verification page per message/inference (shares only inference ID, model, trust mode, provider address, verification status, never message content unless the visitor owns it).
 
 *Note:* a minimal playground is built at the end of Phase 4 so 0G work can be tested in the UI. Phase 6 polishes it.
 
-## Phase 7 — Integrations (M each)
+## Differentiators ✅ implemented 2026-11-07, awaiting review
+
+- **Proof of what support told you:** `inference_records.answer_sha256` = SHA-256(`alactic-answer-v1:<inference id>:<shown text>`), published on the receipt. Chat proof links carry the answer in the URL fragment (never sent to a server), and the receipt page checks it in the browser. You can also paste text to check it (`src/lib/answer-fingerprint.ts`, `src/components/public/answer-check.tsx`).
+- **Public trust report + badge:** `/a/<slug>/trust` (30-day public answers, % TEE-verified, % answered from knowledge, median latency, knowledge by type, published versions, channels; aggregates only) and `/a/<slug>/badge.svg` (embeddable, escaped SVG, 5-min cache).
+- **Verified human handoff:** "Talk to a person" in the public chat and widget (suggested after a fallback). Creates `handoff_requests` (one open per conversation, visitor-owned conversations only, 3/h per visitor) with a 0G summary that has its own proof receipt; the team resolves it in the agent's Inbox (summary, contact, note, transcript with per-answer proofs).
+- **Gap drafts from a page:** for an unanswered question, the admin gives one page of their site. Firecrawl `/v2/scrape` fetches it (only the URL leaves Alactic), the agent's model drafts strictly from that page in its own trust mode (`NOT_FOUND` when the page doesn't answer), and the admin edits and approves. 0G web search was rejected: it is refused under Private/E2EE (see 0G doc §10g).
+- **Daily owner digest:** `org_digests` (one per org per UTC day). An Inngest cron at 07:00 UTC plus an admin "Refresh" (max every 10 min) produce a 0G-written briefing from 24 h aggregates (waiting customers, new gaps, failing tests, broken channels, verification). Quiet days use fixed text with no AI call.
+- Shared helper `src/server/runtime/side-inference.ts`: non-customer inferences (summaries, drafts, digests) get the same trust mode, verification, fingerprint and proof receipt as answers.
+- **Agent test suite:** golden questions (`agent_test_cases`, up to 25 per agent; must-include phrases or "must decline"), runs on the draft via Inngest (`agent/tests.run`), scored results with proof receipts, no gap-inbox noise; the Deploy tab shows the draft's latest score before publishing (not blocking).
+
+## Phase 7 — Integrations (M each) 🟡 implemented 2026-11-07 (Telegram, WhatsApp, Slack, Discord), awaiting live tests with real accounts
+
+Done: shared connector framework (`src/server/connectors/`): `channel_connections` with AES-256-GCM credentials (row id bound as associated data), per-connection webhook URLs, platform signature checks (Telegram secret token, Meta `X-Hub-Signature-256`, Slack v0 HMAC + 5-min window, Discord Ed25519), event dedupe (`connector_events`), Inngest job (`connector/message.received`, one run per thread, no retries to avoid duplicate answers), one conversation per external thread, per-user rate limits, voice notes and images through the same 0G pipeline, a proof link on every reply, a Channels tab with setup steps, and a local Telegram poller (`pnpm connectors:poll`). Research: `docs/integrations/*.md`. Tests: `tests/connectors.test.ts`, `tests/connector-platforms.test.ts`.
+Verified locally: signed/forged requests on every route; webhook → queue → 0G answer → reply attempt. **Not yet verified with real platform accounts.**
+**Zendesk: blocked.** API tokens are being retired (unusable after 2027-04-30), and Zendesk's terms require a Zendesk-approved global OAuth client for multi-customer products. Decision needed (see docs/integrations/ZENDESK.md).
+
+Original scope:
 
 Discord (HTTP interactions, Ed25519, `/ask`, deferred responses via Inngest) → Slack (OAuth v2, Events API, signing secret, threaded replies, 3-s ack + async) → Zendesk (stretch). Each one: re-read the current platform docs first, use the shared runtime, keep incomplete ones labelled "Beta/Not available".
 
