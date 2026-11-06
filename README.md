@@ -43,6 +43,7 @@ Open the app at exactly the origin in `APP_URL` (`http://localhost:3000`, not `1
 
 | Command | What it does |
 |---|---|
+| `pnpm dev:clean` | Start dev after clearing Turbopack's dev cache (use if pages reload in a loop) |
 | `pnpm test` | Integration tests against the `alactic_test` database (SIWE, sessions, org isolation) |
 | `pnpm typecheck` / `pnpm lint` | TypeScript and ESLint |
 | `pnpm build && pnpm start` | Production build |

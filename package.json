@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "inngest:dev": "npx --yes inngest-cli@latest dev -u http://localhost:3000/api/inngest --no-discovery",
-    "zg:check": "node --env-file=.env.local scripts/zg-live-check.mjs"
+    "zg:check": "node --env-file=.env.local scripts/zg-live-check.mjs",
+    "dev:clean": "rm -rf .next/dev && next dev"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
