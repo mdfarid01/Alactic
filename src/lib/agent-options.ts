@@ -50,7 +50,11 @@ export const LANGUAGES = [
 ] as const;
 export type LanguageOption = (typeof LANGUAGES)[number]["value"];
 
-export const DEFAULT_MODEL_ID = "glm-5.3";
+/**
+ * Default chat model. Chosen from live tests on 2026-11-06: 0gm-1.0-35b-a3b (TeeML) answered in ~2s, while
+ * glm-5.3 was intermittently overloaded, ~3x slower, ~16x more expensive and leaked reasoning text.
+ */
+export const DEFAULT_MODEL_ID = "0gm-1.0-35b-a3b";
 export const DEFAULT_TRUST_MODE: TrustModeOption = "private";
 export const DEFAULT_FALLBACK_MESSAGE =
   "I'm not sure about that one. Please contact our support team and they'll be happy to help.";

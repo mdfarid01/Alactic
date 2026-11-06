@@ -11,6 +11,7 @@ export type CatalogModel = {
   /** Highest verifiability among the model's providers (0G lists each model under its best provider). */
   verifiability: Verifiability;
   supportsTools: boolean;
+  supportedParameters: string[];
   pricingUsd: { prompt: string | null; completion: string | null };
   /** Trust modes this model can be requested with, based on its verifiability (capability, not live health). */
   trustModes: TrustModeOption[];
@@ -64,6 +65,7 @@ export function parseChatModels(json: unknown): CatalogModel[] {
       contextLength: m.data.context_length ?? null,
       verifiability,
       supportsTools: m.data.supported_parameters?.includes("tools") ?? false,
+      supportedParameters: m.data.supported_parameters ?? [],
       pricingUsd: { prompt: price("prompt"), completion: price("completion") },
       trustModes: trustModesFor(verifiability),
     });

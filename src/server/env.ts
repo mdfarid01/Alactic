@@ -32,6 +32,10 @@ const envSchema = z.object({
   ETH_RPC_URL_SEPOLIA: optionalUrl,
   /** Parent ENS name for Alactic-managed agent subnames (see docs/ENS_INTEGRATION.md §6). */
   ENS_PARENT_NAME: z.string().regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/).default("alactic.eth"),
+  /** 0G Chain RPC + InferenceServing contract, used for independent TEE signature verification (read-only). */
+  ZG_CHAIN_RPC_URL: z.url().default("https://evmrpc.0g.ai"),
+  ZG_CHAIN_ID: z.coerce.number().int().default(16661),
+  ZG_INFERENCE_CONTRACT: z.string().regex(/^0x[0-9a-fA-F]{40}$/).default("0x47340d900bdFec2BD393c626E12ea0656F938d84"),
   /** 0G Compute Router API base. Public endpoints (/models, /providers) need no key. */
   /** 0G Router inference key (sk-…). Server-only. Optional until Phase 3/4 features are used. */
   ZG_ROUTER_API_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
@@ -41,6 +45,8 @@ const envSchema = z.object({
   EMBEDDING_TRUST_MODE: z.enum(["private", "verified", "standard"]).default("private"),
   /** Send `dimensions: 1024` (only for models that accept it, e.g. qwen3.7-text-embedding). */
   EMBEDDING_SEND_DIMENSIONS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Cost guard: max AI responses per organization per UTC day. */
+  INFERENCE_DAILY_ORG_LIMIT: z.coerce.number().int().min(1).max(1_000_000).default(500),
   /** Firecrawl API key for website crawling. Server-only. */
   FIRECRAWL_API_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   ZG_ROUTER_BASE_URL: z.url().default("https://router-api.0g.ai/v1").transform((u) => u.replace(/\/+$/, "")),

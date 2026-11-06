@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   foreignKey,
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -318,5 +320,136 @@ export const knowledgeChunks = pgTable(
     index("knowledge_chunks_agent_idx").on(t.agentId, t.orgId),
     index("knowledge_chunks_source_idx").on(t.sourceId),
     index("knowledge_chunks_embedding_hnsw").using("hnsw", t.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+// ─── Conversations & inference ────────────────────────────────────────────────
+
+export const conversationChannel = pgEnum("conversation_channel", ["playground", "web", "widget", "discord", "slack", "zendesk"]);
+export type ConversationChannel = (typeof conversationChannel.enumValues)[number];
+
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    channel: conversationChannel("channel").notNull(),
+    /** Channel-specific thread reference (Slack thread ts, Discord channel, Zendesk ticket…). */
+    externalRef: text("external_ref"),
+    /** Anonymous web visitors: hash of their visitor token. */
+    visitorTokenHash: text("visitor_token_hash"),
+    /** Playground: the org member who started it. */
+    startedBy: uuid("started_by").references(() => users.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({ name: "conversations_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
+    unique("conversations_tenant_unique").on(t.id, t.agentId, t.orgId),
+    index("conversations_agent_recent_idx").on(t.agentId, t.lastMessageAt),
+  ],
+);
+
+export const inferenceStatus = pgEnum("inference_status", ["requested", "completed", "failed"]);
+
+export const inferenceRecords = pgTable(
+  "inference_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    configId: uuid("config_id"),
+    modelId: text("model_id").notNull(),
+    trustModeRequested: trustMode("trust_mode_requested").notNull(),
+    verifyTeeRequested: boolean("verify_tee_requested").notNull(),
+    status: inferenceStatus("status").notNull().default("requested"),
+    routerRequestId: text("router_request_id"),
+    /** chatID for independent verification (ZG-Res-Key header, else response id). */
+    chatId: text("chat_id"),
+    providerAddress: text("provider_address"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    /** Cost exactly as reported in x_0g_trace.billing, with its unit ("usd_micro" observed live; "neuron" per docs). */
+    costAmount: numeric("cost_amount", { precision: 78, scale: 0 }),
+    costUnit: text("cost_unit"),
+    latencyMs: integer("latency_ms"),
+    errorType: text("error_type"),
+    errorCode: text("error_code"),
+    httpStatus: integer("http_status"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({
+      name: "inference_records_conversation_tenant_fk",
+      columns: [t.conversationId, t.agentId, t.orgId],
+      foreignColumns: [conversations.id, conversations.agentId, conversations.orgId],
+    }).onDelete("cascade"),
+    index("inference_records_org_time_idx").on(t.orgId, t.requestedAt),
+    index("inference_records_agent_time_idx").on(t.agentId, t.requestedAt),
+  ],
+);
+
+export const verificationMethod = pgEnum("verification_method", ["router", "independent"]);
+export const verificationStatus = pgEnum("verification_status", ["not_requested", "verified", "failed", "unavailable"]);
+export type VerificationStatus = (typeof verificationStatus.enumValues)[number];
+
+export const verificationRecords = pgTable(
+  "verification_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    inferenceId: uuid("inference_id")
+      .notNull()
+      .references(() => inferenceRecords.id, { onDelete: "cascade" }),
+    method: verificationMethod("method").notNull(),
+    status: verificationStatus("status").notNull(),
+    signerAddress: text("signer_address"),
+    /** Non-sensitive evidence (e.g. raw tee_verified value, provider). Never message content. */
+    details: jsonb("details").$type<Record<string, unknown>>(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("verification_records_inference_idx").on(t.inferenceId)],
+);
+
+export const messageRole = pgEnum("message_role", ["user", "assistant"]);
+
+export type Citation = {
+  n: number;
+  chunkId: string;
+  documentId: string;
+  title: string;
+  url: string | null;
+  headingPath: string | null;
+  pageFrom: number | null;
+  pageTo: number | null;
+  sourceType: string;
+};
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    role: messageRole("role").notNull(),
+    content: text("content").notNull(),
+    citations: jsonb("citations").$type<Citation[]>(),
+    inferenceId: uuid("inference_id").references(() => inferenceRecords.id, { onDelete: "set null" }),
+    /** True when the agent's fallback answer was shown instead of model output. */
+    isFallback: boolean("is_fallback").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      name: "messages_conversation_tenant_fk",
+      columns: [t.conversationId, t.agentId, t.orgId],
+      foreignColumns: [conversations.id, conversations.agentId, conversations.orgId],
+    }).onDelete("cascade"),
+    index("messages_conversation_time_idx").on(t.conversationId, t.createdAt),
+    check("messages_content_length", sql`char_length(${t.content}) <= 20000`),
   ],
 );

@@ -24,7 +24,7 @@ All checks are read-only RPC calls (public mainnet/Sepolia RPC, viem 2.57.16). N
 | Network | **Ethereum mainnet, ENSv2.** Not registered on Sepolia (Sepolia v2 `.eth` registry returns no resolver, expiry 0). |
 | ENSv1 registry / BaseRegistrar | owner `0x0`, `available("alactic") = true`. The name does **not** exist in ENSv1. Tools that only read v1 contracts won't see it. |
 | ENSv2 path | RootRegistry `0x2553c09b…a91e` → `getSubregistry("eth")` = `.eth` registry `0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2` |
-| Token owner | `ownerOf(tokenId)` = **`0x86bE57d9FDE6492C4bDbAf83E639b8EC99fF7b75`** (an EOA; holds balance 1 of the ERC-1155 token). Its primary (reverse) name is `alactic.eth`. **Founder: please confirm this is your wallet.** |
+| Token owner | `ownerOf(tokenId)` = **`0x86bE57d9FDE6492C4bDbAf83E639b8EC99fF7b75`** (an EOA; holds balance 1 of the ERC-1155 token). Its primary (reverse) name is `alactic.eth`. **Confirmed by the founder as their wallet (2026-11-06).** |
 | Expiry | `1825486343` = **2027-11-06 07:32 UTC** (1 year). Renewal must be scheduled. |
 | Owner's registry roles on the name | `SET_RESOLVER` (+admin), `SET_SUBREGISTRY` (+admin), `CAN_TRANSFER_ADMIN`. Not `RENEW` (renewal is via the registrar). |
 | Subregistry | none (`0x0`) |
@@ -160,7 +160,7 @@ Flow (implemented in Phase 1):
 
 ## 11. Open questions
 
-1. Confirm `0x86bE57d9FDE6492C4bDbAf83E639b8EC99fF7b75` is your wallet, and consider moving the name to a hardware wallet or multisig before production.
+1. ~~Confirm the owner wallet~~ Confirmed. Still recommended: move the name to a hardware wallet or multisig before production.
 2. Renewal before **2027-11-06** — set a reminder or extend now?
 3. Production domain → `ENS_RECORD_PREFIX` and public URLs.
 4. Is gas per publish batch (5a) acceptable for the hackathon, or do you want 5b/5c/CCIP-Read sooner?

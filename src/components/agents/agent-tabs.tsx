@@ -9,6 +9,7 @@ export function AgentTabs({ base }: { base: string }) {
   const items = [
     { href: base, label: "Configuration", active: pathname === base },
     { href: `${base}/knowledge`, label: "Knowledge", active: pathname.startsWith(`${base}/knowledge`) },
+    { href: `${base}/playground`, label: "Playground", active: pathname.startsWith(`${base}/playground`) },
   ];
   return (
     <nav aria-label="Agent" className="flex gap-1 rounded-lg bg-muted p-1 text-sm w-fit">

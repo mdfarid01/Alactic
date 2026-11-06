@@ -1,0 +1,1 @@
+ALTER TABLE "inference_records" DROP COLUMN "cost_neuron";

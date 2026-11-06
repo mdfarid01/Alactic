@@ -38,3 +38,26 @@ export class FakeCrawler implements Crawler {
     return { state: "completed", pages: this.pages };
   }
 }
+
+import type { ChatClient, ChatRequest, ChatResult } from "@/server/inference/router-client";
+
+/** Scriptable fake 0G Router client. TEST USE ONLY. */
+export class FakeChat implements ChatClient {
+  requests: ChatRequest[] = [];
+  constructor(public respond: (req: ChatRequest) => Promise<Partial<ChatResult>> | Partial<ChatResult>) {}
+  async complete(req: ChatRequest): Promise<ChatResult> {
+    this.requests.push(req);
+    const r = await this.respond(req);
+    const verifyTeeRequested = req.trustMode !== "standard";
+    return {
+      content: "",
+      chatId: "chat-1",
+      inputTokens: 100,
+      outputTokens: 20,
+      latencyMs: 42,
+      verifyTeeRequested,
+      ...r,
+      trace: { requestId: "req-1", provider: "0xf4FB8d2bD856e672b5f9848b0eD235A20079B250", cost: { amount: "20", unit: "usd_micro" }, teeVerified: verifyTeeRequested ? true : null, ...(r.trace ?? {}) },
+    };
+  }
+}

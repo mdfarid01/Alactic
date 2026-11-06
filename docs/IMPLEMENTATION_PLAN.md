@@ -49,7 +49,11 @@ Delivered: knowledge schema (migration 0002, pgvector), upload/extract (PDF/DOCX
 5. Status UI, re-index, delete (cascade + file removal).
 6. Tests: two-tenant isolation fixture, delete removes retrieval, re-index idempotency, SSRF URL validator.
 
-## Phase 4 — 0G Compute (M)
+## Phase 4 — 0G Compute (M) ✅ implemented 2026-11-06, awaiting review (live 0G pending API key)
+
+Delivered: Router chat client, shared `runAgent` runtime (retrieval → controlled prompt → inference → verification → citations → persistence), conversation/message/inference/verification schema (migration 0003), daily cost guard, playground (draft config, citations, trust and verification badges, readable errors), real verification stats on the overview. 116 tests. Browser E2E: (a) without a key, a fallback with a clear reason and no false badge; (b) against a local mock Router, a cited answer with a "TEE signature verified" (Router) badge, and every request pinned to `private` with `verify_tee`.
+Deferred: live spikes (need key), streaming (D14), independent verification (stretch), operator alerts on 401/402 (currently logged and recorded per inference).
+
 
 0. **Spikes:** streaming + `x_0g_trace`; `ZG-Res-Key` header; behaviour of 503 `no_provider_for_trust_mode`; latency/quality of `glm-5.3` vs `0gm-1.0-35b-a3b`.
 1. `InferenceClient` (openai SDK, baseURL override, explicit trust-mode header, `verify_tee`), typed error mapping (§8 of 0G doc), bounded retries, timeouts.

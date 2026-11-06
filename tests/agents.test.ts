@@ -68,7 +68,7 @@ describe("agent creation & defaults", () => {
     const loaded = await getAgentForEdit(db, acmeOwner, "acme-support");
     expect(loaded?.agent.status).toBe("draft");
     expect(loaded?.isDraft).toBe(true);
-    expect(loaded?.config).toMatchObject({ version: 1, modelId: "glm-5.3", trustMode: "private" });
+    expect(loaded?.config).toMatchObject({ version: 1, modelId: "0gm-1.0-35b-a3b", trustMode: "private" });
   });
 
   it("refuses to create an agent when the default private model is unavailable (no silent downgrade)", async () => {

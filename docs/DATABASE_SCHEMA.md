@@ -61,7 +61,10 @@ Indexes: HNSW `(embedding vector_cosine_ops)`; btree `(agent_id, org_id)`; btree
 
 **faq entries** are stored as `knowledge_sources(type='faq')` with one document per Q/A, so they share the pipeline. No extra table.
 
-### Conversations
+### Conversations (implemented in migration 0003)
+
+As built: `conversations`, `messages`, `inference_records` and `verification_records` carry composite `(conversation_id, agent_id, org_id)` FKs to the conversation, so messages and inference rows can't point across tenants. `messages.is_fallback` marks fallback replies. `usage_events` was **not created** (decision D15).
+
 
 **conversations** — `id`, `org_id`, `agent_id`, `channel` (`playground` | `web` | `widget` | `discord` | `slack` | `zendesk`), `external_ref?` (e.g. Slack thread ts, Discord channel+user, Zendesk ticket id), `visitor_token_hash?` (anonymous web visitors), `integration_id?`, `config_id` (version used at start), `started_at`, `last_message_at`.
 Unique `(integration_id, external_ref)` where not null.

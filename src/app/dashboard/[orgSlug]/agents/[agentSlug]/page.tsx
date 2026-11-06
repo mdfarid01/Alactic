@@ -111,7 +111,16 @@ async function AgentBuilder({ params }: { params: Params }) {
                   </Link>
                 }
               />
-              <NextStep icon={MessageSquare} title="Playground" body="Test answers with citations and verification status." />
+              <NextStep
+                icon={MessageSquare}
+                title="Playground"
+                available
+                body={
+                  <Link href={`/dashboard/${scope.orgSlug}/agents/${agent.slug}/playground`} className="underline-offset-4 hover:underline">
+                    Test answers with citations and verification status →
+                  </Link>
+                }
+              />
               <NextStep icon={Globe} title="Publish" body="Public chat page and website widget." />
               <NextStep
                 icon={Fingerprint}

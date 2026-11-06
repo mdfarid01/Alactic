@@ -22,6 +22,27 @@
       "when": 1793976448751,
       "tag": "0002_knowledge",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793977275484,
+      "tag": "0003_inference",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793982395612,
+      "tag": "0004_inference_cost",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793982396848,
+      "tag": "0005_drop_cost_neuron",
+      "breakpoints": true
     }
   ]
 }

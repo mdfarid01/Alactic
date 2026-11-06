@@ -13,7 +13,7 @@ Alactic lets a business create an AI customer support agent from its own website
 
 ## Status
 
-**Phase 3 — knowledge complete, awaiting review.** Working today: wallet sign-in, organizations and members, agent builder, and knowledge sources (website, PDF/DOCX/TXT/MD, FAQ, text) with background indexing and retrieval testing. Indexing completes only once `ZG_ROUTER_API_KEY` (0G embeddings) and, for websites, `FIRECRAWL_API_KEY` are set. AI answers (Phase 4), publishing (6) and ENS records (5) are next.
+**Phase 4 — 0G inference complete, awaiting review.** Working today: wallet sign-in, organizations and members, agent builder, knowledge sources with background indexing, and a playground where agents answer via the 0G Compute Router with citations and an honest verification status. Live answers need `ZG_ROUTER_API_KEY` (and `FIRECRAWL_API_KEY` for websites). Without them the app shows the fallback answer and says why. ENS (Phase 5) and publishing (Phase 6) are next.
 
 | Doc | Contents |
 |---|---|
@@ -34,7 +34,7 @@ Requirements: Node 22+, pnpm 10, Docker (for local Postgres), and a browser wall
 pnpm install
 cp .env.example .env.local      # defaults work for local development
 pnpm db:up                      # Postgres 17 + pgvector on 127.0.0.1:54329 (also creates alactic_test)
-set -a; . ./.env.local; set +a; pnpm db:migrate
+pnpm db:migrate                 # reads .env.local itself
 pnpm dev                        # http://localhost:3000
 pnpm inngest:dev                # second terminal: background jobs (Inngest dev server, http://localhost:8288)
 ```

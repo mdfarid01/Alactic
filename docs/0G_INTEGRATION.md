@@ -222,6 +222,33 @@ Plan (post-MVP, needs approval because it signs transactions):
 - Live availability is computed per trust mode from providers that report `is_healthy: true` (unknown health counts as unhealthy). It is shown as a point-in-time hint, never as a guarantee.
 - Agent model/trust changes are validated server-side against the live catalog. If the catalog can't be reached, changes are refused rather than assumed valid.
 
+## 10d. LIVE findings (mainnet, 2026-11-06, `scripts/zg-live-check.mjs`)
+
+These override the doc-based statements above where they differ.
+
+| Topic | Docs said | Observed live |
+|---|---|---|
+| `tee_verified` | Added to `x_0g_trace` when `verify_tee: true` | **Absent** in every response (body flag and `?verify_tee=true` both tried, chat and stream). The Router gives no verdict, so we verify independently (below). |
+| Independent verification | Service contract → `/v1/proxy/signature/{chatID}` → EIP-191 | **Works.** Mainnet InferenceServing `0x47340d900bdFec2BD393c626E12ea0656F938d84` on chain 16661 (`https://evmrpc.0g.ai`), `getService(provider)` gives the URL, model, TeeML and acknowledged signer. The signature recovers to the signer. |
+| What is signed | "Confirm the signed text matches the response content" | Signed text is `zg-sig-v1/e2ee-ct:<sha256>:<sha256>`, hashes of the **end-to-end-encrypted** exchange. None of our plaintext artifacts hash to them, so **we can't bind the signature to the displayed words.** UI wording reflects this. |
+| `ZG-Res-Key` | chatID header | Present |
+| Billing units | neuron | `{"currency":"usd", "total_cost_usd_micro": "…"}`, i.e. USD micro-units. Stored as `cost_amount` + `cost_unit`. |
+| Streaming | Unknown | Final SSE chunk carries `x_0g_trace` (`choices: []`), so streaming is viable later. |
+| Thinking models | `enable_thinking:false` documented for GLM-5 | `0gm-1.0-35b-a3b` spends `max_tokens` on reasoning unless disabled. `glm-5.3` **leaked reasoning into `content`** (`…</think>Answer`) even when disabled. We send the toggle for models whose catalog lists `chat_template_kwargs`, and strip `</think>` prefixes. |
+| Errors | Documented list | Also seen: `429 model_overloaded` (upstream, `Retry-After: 30`), `403 trust_mode_mismatch` (key restricted to `private`; good defense in depth). |
+| Embeddings | — | `qwen3-embedding-0.6b` private: 1024 dims, ~4 s for one input, 1 USD-micro. |
+| Performance | — | `0gm-1.0-35b-a3b` ~1.4–2.5 s, ~20–40 USD-micro per short answer. `glm-5.3` ~7 s, ~324 USD-micro, intermittently overloaded. **Default model switched to `0gm-1.0-35b-a3b`.** |
+| Rate limits | Per account | `X-RateLimit-Limit-Requests: 500` per minute on this key |
+
+## 10c. Implemented (Phase 4)
+
+- `src/server/inference/router-client.ts`: `POST /v1/chat/completions`, **non-streaming** (the verification evidence `x_0g_trace` is only documented on non-streaming responses), `max_tokens`, `Authorization: Bearer`, `X-0G-Provider-Trust-Mode` on every request, `verify_tee: true` for private/verified, `chat_template_kwargs.enable_thinking=false` for `glm-*` (documented for GLM-5). chatID = `ZG-Res-Key` header, else body `id`. Typed errors per §8. The only retry is one after a 502 `provider_error`, same trust mode.
+- Verification mapping: not requested → `not_requested`; `tee_verified` true → `verified` (method `router`); false → `failed`, and **the response is withheld and the fallback shown**; null/absent → `unavailable`. Stored in `verification_records`, with no message content.
+- Cost guard: `INFERENCE_DAILY_ORG_LIMIT` (default 500 AI responses per org per UTC day), counted from `inference_records`.
+- Tested: unit tests against recorded response shapes, the runtime against Postgres with a fake Router (every verification outcome, 503 without downgrade, daily cap, tenant isolation), and a browser E2E against a **local mock** Router to check the UI and that trust headers and `verify_tee` reach the wire.
+- **Not yet verified live** (needs `ZG_ROUTER_API_KEY`): real `x_0g_trace`/`tee_verified` values, `ZG-Res-Key`, `usage` field names, latency of `glm-5.3` vs `0gm-1.0-35b-a3b`, and whether streaming responses carry the trace.
+- **Independent verification implemented** (`tee-verifier.ts`, live-tested): on-chain service lookup (cached 10 min), verifiability + acknowledged-signer checks, `TargetSeparated` rule from the SDK, https-only public signature endpoint, 404 retry, EIP-191 recovery. Both the Router and independent results are stored; a failure from either withholds the answer.
+
 ## 11. Open questions
 
 1. Is the testnet Router usable for development, or do we develop against mainnet with a small deposit?

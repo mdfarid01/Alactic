@@ -7,6 +7,7 @@ import { db } from "@/server/db/client";
 import { getPageOrgScope } from "@/server/orgs/page-scope";
 import { countMembers, roleAtLeast } from "@/server/orgs/service";
 import { listAgents } from "@/server/agents/service";
+import { verificationSummary } from "@/server/runtime/run-agent";
 import { AgentStatusBadge, TrustBadge } from "@/components/agents/trust-badge";
 
 export default function OrgOverviewPage({ params }: PageProps<"/dashboard/[orgSlug]">) {
@@ -20,7 +21,11 @@ export default function OrgOverviewPage({ params }: PageProps<"/dashboard/[orgSl
 async function Overview({ params }: { params: PageProps<"/dashboard/[orgSlug]">["params"] }) {
   const { orgSlug } = await params;
   const scope = await getPageOrgScope(orgSlug);
-  const [members, agents] = await Promise.all([countMembers(db(), scope), listAgents(db(), scope)]);
+  const [members, agents, verification] = await Promise.all([
+    countMembers(db(), scope),
+    listAgents(db(), scope),
+    verificationSummary(db(), scope.orgId),
+  ]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -66,7 +71,7 @@ async function Overview({ params }: { params: PageProps<"/dashboard/[orgSlug]">[
 
       <EmptyStat icon={BookOpen} title="Knowledge" body="Website, document and FAQ sources with indexing status will appear here." />
       <EmptyStat icon={MessagesSquare} title="Conversations" body="Recent conversations across all channels will appear here." />
-      <EmptyStat icon={ShieldCheck} title="Verification activity" body="Inference trust modes and TEE verification results will appear here." />
+      <VerificationActivity summary={verification} />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -97,6 +102,40 @@ function EmptyStat({ icon: Icon, title, body }: { icon: typeof Bot; title: strin
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">Nothing yet.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VerificationActivity({ summary }: { summary: Awaited<ReturnType<typeof verificationSummary>> }) {
+  const total = summary.inference.reduce((a, r) => a + r.n, 0);
+  const failedInference = summary.inference.filter((r) => r.status === "failed").reduce((a, r) => a + r.n, 0);
+  const v = (s: string) => summary.verification.find((r) => r.status === s)?.n ?? 0;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldCheck className="size-4 text-muted-foreground" aria-hidden /> Verification activity
+        </CardTitle>
+        <CardDescription>AI responses in the last 7 days. Each response counts once, by its strongest recorded evidence.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {total === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing yet.</p>
+        ) : (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            <dt className="text-muted-foreground">AI requests</dt>
+            <dd className="text-right tabular-nums">{total}</dd>
+            <dt className="text-muted-foreground">TEE verified</dt>
+            <dd className="text-right tabular-nums">{v("verified")}</dd>
+            <dt className="text-muted-foreground">Verification failed</dt>
+            <dd className="text-right tabular-nums">{v("failed")}</dd>
+            <dt className="text-muted-foreground">Unavailable / not requested</dt>
+            <dd className="text-right tabular-nums">{v("unavailable") + v("not_requested")}</dd>
+            <dt className="text-muted-foreground">Requests that failed</dt>
+            <dd className="text-right tabular-nums">{failedInference}</dd>
+          </dl>
+        )}
       </CardContent>
     </Card>
   );
