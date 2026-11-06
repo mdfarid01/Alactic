@@ -10,6 +10,10 @@ export function AgentTabs({ base }: { base: string }) {
     { href: base, label: "Configuration", active: pathname === base },
     { href: `${base}/knowledge`, label: "Knowledge", active: pathname.startsWith(`${base}/knowledge`) },
     { href: `${base}/playground`, label: "Playground", active: pathname.startsWith(`${base}/playground`) },
+    { href: `${base}/tests`, label: "Tests", active: pathname.startsWith(`${base}/tests`) },
+    { href: `${base}/inbox`, label: "Inbox", active: pathname.startsWith(`${base}/inbox`) },
+    { href: `${base}/channels`, label: "Channels", active: pathname.startsWith(`${base}/channels`) },
+    { href: `${base}/deploy`, label: "Deploy", active: pathname.startsWith(`${base}/deploy`) },
   ];
   return (
     <nav aria-label="Agent" className="flex gap-1 rounded-lg bg-muted p-1 text-sm w-fit">
