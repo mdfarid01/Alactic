@@ -348,6 +348,18 @@ export async function publishDraft(db: Database, scope: OrgScope, slug: string) 
   });
 }
 
+/** Take a published agent offline ("paused") or bring it back. Requires a published version. */
+export async function setAgentLive(db: Database, scope: OrgScope, slug: string, live: boolean) {
+  requireEditor(scope);
+  const agent = await findAgent(db, scope, slug);
+  if (!agent) throw new AgentError("not_found", "Agent not found");
+  if (!agent.publishedConfigId) throw new AgentError("nothing_to_publish", "Publish the agent first");
+  await db
+    .update(agents)
+    .set({ status: live ? "published" : "paused", updatedAt: new Date() })
+    .where(and(eq(agents.id, agent.id), eq(agents.orgId, scope.orgId)));
+}
+
 export async function deleteAgent(db: Database, scope: OrgScope, slug: string) {
   requireEditor(scope);
   const deleted = await db
