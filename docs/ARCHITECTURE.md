@@ -108,6 +108,7 @@ tests/                      vitest unit + integration (tenant isolation, auth, r
 | D9 | ENS: Alactic-managed `<slug>.alactic.eth` records on the existing ENSv2 PermissionedResolver (mainnet) + business-owned (BYO) names | Works today with no contract deployment or resolver change, fully on-chain; BYO gives real ownership | CCIP-Read gateway (needs resolver change + trusted signer), UserRegistry per-agent tokens (deployment; planned 5c) |
 | D10 | Widget = script loader + iframe | Style isolation, no secrets in the host page, simple CSP story | Injected DOM widget (CSS conflicts, larger attack surface) |
 | D11 | 0G Storage deferred | Not needed for the core product; requires signing txs | — |
+| D13 | Don't retain uploaded files; keep only normalized extracted text | Enough to re-chunk/re-embed; less sensitive data held; no storage bucket needed for MVP. Trade-off: a better parser later requires re-upload | Supabase Storage bucket (kept as the path for >4 MB direct uploads later) |
 | D12 | Embeddings behind a provider interface; model + dimension stored per chunk | 0G TeeML embedding provider currently unhealthy; must be able to switch deliberately | Hardcoding one provider |
 
 ## 5. Environments

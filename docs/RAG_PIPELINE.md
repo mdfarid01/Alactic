@@ -1,6 +1,6 @@
 # RAG Pipeline
 
-Status: Phase 0 design. Built in Phase 3.
+Status: **implemented in Phase 3 (2026-11-06)**. Indexing runs end to end up to the embedding step. Live embedding and crawling are untested until `ZG_ROUTER_API_KEY` and `FIRECRAWL_API_KEY` are configured (see §9).
 
 ## 1. Flow
 
@@ -94,3 +94,18 @@ Live catalog on 2026-11-06 (see [0G_INTEGRATION](0G_INTEGRATION.md) §7):
 - Small eval set per demo agent: questions with expected source → check retrieval hit rate@k.
 - "Out-of-scope" questions → expect the fallback.
 - Injection fixtures (documents containing "ignore previous instructions…") → expect policy to hold.
+
+## 9. As implemented (Phase 3)
+
+| Piece | Where | Notes |
+|---|---|---|
+| Sources/documents/chunks | `drizzle/0002_knowledge.sql` | Composite FKs carry `(org_id, agent_id)` from source → document → chunk; the DB rejects cross-tenant rows. `vector(1024)` + HNSW (`vector_cosine_ops`). pgvector 0.8.7 locally. |
+| File upload | `POST /api/orgs/[org]/agents/[agent]/knowledge/files` | Admin only, same-origin, ≤ 4 MB (checked before reading the body), extension + magic bytes must agree, DOCX ZIP-directory size guard (≤ 50 MB uncompressed), PDF ≤ 300 pages. **Original files are not stored**, only normalized text (and per-page offsets for PDFs). |
+| Website | Firecrawl v2 REST (`/v2/crawl`, `/v2/crawl/{id}` with `next` pagination) | Same-site only (`allowSubdomains:false`, `allowExternalLinks:false`), ≤ 50 pages, markdown `onlyMainContent`. URL policy rejects IPs, localhost, private TLDs, credentials and non-web ports. |
+| Normalize / chunk | `normalize.ts`, `chunker.ts` | Heading-aware (`Help › Refunds`), ~2400-char target / 3200 max, 360-char overlap within a section, PDF page ranges. Tokens are estimated (~4 chars/token). |
+| Embeddings | `embeddings.ts` (0G Router `/v1/embeddings`) | Always sends `X-0G-Provider-Trust-Mode`; 503 `no_provider_for_trust_mode` is surfaced, never downgraded. Vectors must be exactly 1024-d. Qwen3 query instruction prefix per the 0G catalog description. |
+| Background job | Inngest v4 `knowledge-ingest` | Steps: crawl → chunk → embed (batches of 32) → finalize. Per-agent concurrency 1, 3 retries, rate-limit `Retry-After` honoured. Non-retryable errors (missing key, auth, balance) mark the source **failed with a readable reason**. A run id guards every write, so re-index/delete stops stale runs. |
+| Re-index | `reindexSource` | Re-crawls websites; only changed documents (content hash) are re-chunked, and only chunks lacking an embedding from the *current* model are embedded. Unchanged content costs nothing. |
+| Retrieval | `retrieval.ts` | `org_id` AND `agent_id` filter, current `embedding_model` only, `hnsw.iterative_scan = relaxed_order`, top-k ≤ 20. The dashboard "Test retrieval" box uses it (no LLM). |
+
+**Embedding model status (2026-11-06):** both TeeML (private) embedding providers on 0G (`qwen3-embedding-0.6b`, `qwen3-embedding-8b`) report `is_healthy: false`. The only healthy option is `qwen3.7-text-embedding` (TeeTLS/Aliyun, `verified` mode; the upstream provider processes document text under its own policy). The default stays private; switching is an explicit env change (`EMBEDDING_MODEL`, `EMBEDDING_TRUST_MODE=verified`, `EMBEDDING_SEND_DIMENSIONS=true`) followed by re-indexing.

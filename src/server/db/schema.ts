@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -13,6 +14,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  vector,
 } from "drizzle-orm/pg-core";
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -199,5 +201,122 @@ export const agentConfigs = pgTable(
     check("agent_configs_max_tokens_range", sql`${t.maxOutputTokens} between 128 and 4096`),
     check("agent_configs_top_k_range", sql`${t.retrievalTopK} between 1 and 20`),
     check("agent_configs_version_positive", sql`${t.version} >= 1`),
+  ],
+);
+
+// ─── Knowledge ────────────────────────────────────────────────────────────────
+
+/** Fixed embedding width for the whole index. Models are configured to emit exactly this many dimensions. */
+export const EMBEDDING_DIMENSIONS = 1024;
+
+export const knowledgeSourceType = pgEnum("knowledge_source_type", ["website", "file", "faq", "text"]);
+export type KnowledgeSourceType = (typeof knowledgeSourceType.enumValues)[number];
+
+export const knowledgeSourceStatus = pgEnum("knowledge_source_status", ["queued", "processing", "ready", "failed"]);
+export type KnowledgeSourceStatus = (typeof knowledgeSourceStatus.enumValues)[number];
+
+export const knowledgeSources = pgTable(
+  "knowledge_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    type: knowledgeSourceType("type").notNull(),
+    title: text("title").notNull(),
+    /** Website sources: the start URL. */
+    url: text("url"),
+    /** File sources: original file name, MIME type and size (the file itself is not stored). */
+    fileName: text("file_name"),
+    fileMime: text("file_mime"),
+    fileSize: integer("file_size"),
+    /** Website crawl options: { maxPages, includePaths, excludePaths }. */
+    crawlOptions: jsonb("crawl_options").$type<{ maxPages: number; includePaths?: string[]; excludePaths?: string[] }>(),
+    status: knowledgeSourceStatus("status").notNull().default("queued"),
+    /** Human-readable progress or a safe (non-sensitive) error message. */
+    statusDetail: text("status_detail"),
+    /** Id of the latest ingestion run. Older runs see a mismatch and stop (re-index / delete safety). */
+    ingestRunId: uuid("ingest_run_id"),
+    documentCount: integer("document_count").notNull().default(0),
+    chunkCount: integer("chunk_count").notNull().default(0),
+    lastIndexedAt: timestamp("last_indexed_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: "knowledge_sources_agent_org_fk",
+      columns: [t.agentId, t.orgId],
+      foreignColumns: [agents.id, agents.orgId],
+    }).onDelete("cascade"),
+    unique("knowledge_sources_tenant_unique").on(t.id, t.agentId, t.orgId),
+    index("knowledge_sources_agent_idx").on(t.agentId, t.orgId),
+    check("knowledge_sources_title_length", sql`char_length(${t.title}) between 1 and 200`),
+  ],
+);
+
+export const knowledgeDocuments = pgTable(
+  "knowledge_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    /** Stable key within the source: page URL for crawls, "file", or "entry" for FAQ/text. */
+    externalKey: text("external_key").notNull(),
+    title: text("title").notNull(),
+    url: text("url"),
+    /** Normalized extracted text. Kept so the source can be re-chunked and re-embedded without re-uploading. */
+    content: text("content").notNull(),
+    /** Per-page text for PDFs, used to cite page numbers. Null for other types. */
+    pageOffsets: jsonb("page_offsets").$type<number[]>(),
+    contentSha256: text("content_sha256").notNull(),
+    /** contentSha256 of the version that currently has chunks. Differs ⇒ needs (re)chunking. */
+    indexedSha256: text("indexed_sha256"),
+    tokenCount: integer("token_count").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: "knowledge_documents_source_tenant_fk",
+      columns: [t.sourceId, t.agentId, t.orgId],
+      foreignColumns: [knowledgeSources.id, knowledgeSources.agentId, knowledgeSources.orgId],
+    }).onDelete("cascade"),
+    unique("knowledge_documents_tenant_unique").on(t.id, t.sourceId, t.agentId, t.orgId),
+    unique("knowledge_documents_source_key_unique").on(t.sourceId, t.externalKey),
+  ],
+);
+
+export const knowledgeChunks = pgTable(
+  "knowledge_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    content: text("content").notNull(),
+    headingPath: text("heading_path"),
+    pageFrom: integer("page_from"),
+    pageTo: integer("page_to"),
+    tokenCount: integer("token_count").notNull(),
+    contentSha256: text("content_sha256").notNull(),
+    /** Null until embedded. */
+    embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
+    embeddingModel: text("embedding_model"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      name: "knowledge_chunks_document_tenant_fk",
+      columns: [t.documentId, t.sourceId, t.agentId, t.orgId],
+      foreignColumns: [knowledgeDocuments.id, knowledgeDocuments.sourceId, knowledgeDocuments.agentId, knowledgeDocuments.orgId],
+    }).onDelete("cascade"),
+    unique("knowledge_chunks_document_index_unique").on(t.documentId, t.chunkIndex),
+    index("knowledge_chunks_agent_idx").on(t.agentId, t.orgId),
+    index("knowledge_chunks_source_idx").on(t.sourceId),
+    index("knowledge_chunks_embedding_hnsw").using("hnsw", t.embedding.op("vector_cosine_ops")),
   ],
 );

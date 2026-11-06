@@ -35,7 +35,11 @@ Not in this phase (by design): a publish button (Phase 6; `publishDraft` exists 
 
 Agents + versioned configs (draft/published), builder UI (name, description, instructions, persona, tone, language, fallback, model, trust mode with live availability from `/v1/models` + `/v1/providers`), list/status UI. Tests: role matrix, config versioning immutability.
 
-## Phase 3 — Knowledge & RAG (L)
+## Phase 3 — Knowledge & RAG (L) ✅ implemented 2026-11-06, awaiting review (live embedding/crawl pending keys)
+
+Delivered: knowledge schema (migration 0002, pgvector), upload/extract (PDF/DOCX/TXT/MD), FAQ and text sources, website crawling via Firecrawl v2, chunking with citations metadata, 0G embedding provider, Inngest v4 background ingestion, re-index/delete, tenant-scoped retrieval, knowledge UI with live status and "Test retrieval". Tests: 92 total (44 new). Browser E2E with the real Inngest dev server: sources save, chunk (PDF pages tracked), and stop with explicit "not configured" reasons.
+**Not verified live:** 0G `/v1/embeddings` (needs `ZG_ROUTER_API_KEY`) and Firecrawl crawling (needs `FIRECRAWL_API_KEY`). Both are implemented against current docs and unit-tested with recorded response shapes.
+
 
 0. **Spike:** authenticated 0G `/v1/embeddings` call; confirm dimension; decide embedding model (founder sign-off).
 1. Inngest setup; sources CRUD; upload to private bucket with validation.

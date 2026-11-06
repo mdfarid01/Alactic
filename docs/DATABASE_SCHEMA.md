@@ -49,6 +49,8 @@ Unique `(id, org_id)` (target of composite FKs). Slug: `^[a-z0-9](?:[a-z0-9-]{1,
 
 ### Knowledge
 
+**(Implemented in migration 0002. See RAG_PIPELINE §9 for the as-built columns: documents store normalized `content` + `page_offsets`, there is no `file_object_key` because files are not retained, and sources carry `ingest_run_id` + `status_detail`.)**
+
 **knowledge_sources** — `id`, `org_id`, `agent_id`, `type` (`website` | `file` | `faq` | `text`), `title`, `url?`, `file_object_key?`, `file_mime?`, `file_size?`, `crawl_options` jsonb (max pages, include/exclude paths), `status` (`queued` | `processing` | `ready` | `failed` | `deleting`), `last_error?` (safe message), `document_count`, `chunk_count`, `last_indexed_at?`, `created_by`, timestamps.
 
 **knowledge_documents** — `id`, `org_id`, `agent_id`, `source_id → knowledge_sources ON DELETE CASCADE`, `title`, `url?`, `filename?`, `content_sha256`, `token_count`, timestamps.

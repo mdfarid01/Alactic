@@ -33,6 +33,16 @@ const envSchema = z.object({
   /** Parent ENS name for Alactic-managed agent subnames (see docs/ENS_INTEGRATION.md §6). */
   ENS_PARENT_NAME: z.string().regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/).default("alactic.eth"),
   /** 0G Compute Router API base. Public endpoints (/models, /providers) need no key. */
+  /** 0G Router inference key (sk-…). Server-only. Optional until Phase 3/4 features are used. */
+  ZG_ROUTER_API_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
+  /** Embedding model on the 0G Router. Must produce 1024-dimensional vectors (see EMBEDDING_SEND_DIMENSIONS). */
+  EMBEDDING_MODEL: z.string().min(1).default("qwen3-embedding-0.6b"),
+  /** Trust mode for embedding requests. Never downgraded automatically. */
+  EMBEDDING_TRUST_MODE: z.enum(["private", "verified", "standard"]).default("private"),
+  /** Send `dimensions: 1024` (only for models that accept it, e.g. qwen3.7-text-embedding). */
+  EMBEDDING_SEND_DIMENSIONS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Firecrawl API key for website crawling. Server-only. */
+  FIRECRAWL_API_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   ZG_ROUTER_BASE_URL: z.url().default("https://router-api.0g.ai/v1").transform((u) => u.replace(/\/+$/, "")),
 });
 

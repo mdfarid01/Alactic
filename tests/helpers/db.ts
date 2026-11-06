@@ -10,7 +10,7 @@ export function setupTestDb() {
 
   beforeEach(async () => {
     await db.execute(
-      sql`TRUNCATE agent_configs, agents, organization_members, organizations, sessions, auth_nonces, wallet_identities, users RESTART IDENTITY CASCADE`,
+      sql`TRUNCATE knowledge_chunks, knowledge_documents, knowledge_sources, agent_configs, agents, organization_members, organizations, sessions, auth_nonces, wallet_identities, users RESTART IDENTITY CASCADE`,
     );
   });
   afterAll(async () => {

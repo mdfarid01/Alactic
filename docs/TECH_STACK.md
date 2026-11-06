@@ -13,13 +13,13 @@ Versions checked on npm on **2026-11-06**. They will be pinned at install time i
 | Database | PostgreSQL + pgvector (hosted on Supabase) | — | Relational + vectors + tenant filters in one store |
 | ORM / migrations | Drizzle ORM + drizzle-kit | 0.45.4 | SQL-close, first-class pgvector type, plain SQL migrations |
 | Background jobs | Inngest | 4.26.2 | Serverless-friendly durable steps and retries |
-| Crawling | Firecrawl (hosted API) | `@mendable/firecrawl-js` 4.52.0 | Handles JS sites, sitemaps, returns clean markdown; no Python service to host |
+| Crawling | Firecrawl (hosted API) via its v2 REST API (no SDK) | API v2 | Handles JS sites, sitemaps, returns clean markdown; no Python service to host |
 | PDF parsing | unpdf | 2.1.0 | Pure JS, serverless-friendly |
 | DOCX parsing | mammoth | 1.13.0 | Mature DOCX → text/HTML |
 | Inference | 0G Compute Router via the `openai` SDK with `baseURL` override | openai 7.53.0 | 0G documents OpenAI compatibility ("change base_url and api_key"); extra headers + `verify_tee` passed through |
 | Embeddings | Provider interface; 0G Router embeddings first, explicit configured fallback | — | See [RAG_PIPELINE](RAG_PIPELINE.md) |
 | ENS | viem (reads); `@ensdomains/ensjs` ≥ 5.2.5 (`/wallet/v2`) for ENSv2 record writes (managed batches + BYO) | 5.2.12 | ENSv2-aware; Universal Resolver |
-| File storage | Supabase Storage (private bucket), server-side access only | — | Raw uploads kept for re-indexing |
+| File storage | **None for MVP** (decision D13): only extracted text is stored in Postgres. Supabase Storage is the planned path for >4 MB direct uploads | — | Less retained customer data, no extra service |
 | Tests | Vitest (unit/integration against real Postgres), Playwright (later, smoke) | — | Security boundaries must be tested against the real DB |
 | Hosting | Vercel (app), Supabase (DB/storage), Inngest Cloud (jobs) | — | Managed, minimal ops |
 
@@ -39,7 +39,8 @@ Versions checked on npm on **2026-11-06**. They will be pinned at install time i
 | `DATABASE_URL` | Supabase | Phase 1 |
 | `SESSION_SECRET` | generated | Phase 1 |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (public by design) | Reown/WalletConnect | Phase 1 (optional: injected wallets work without it) |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (server only) | Supabase | Phase 3 (uploads) |
+| `EMBEDDING_MODEL`, `EMBEDDING_TRUST_MODE`, `EMBEDDING_SEND_DIMENSIONS` | config | Phase 3 |
+| `INNGEST_DEV=1` (local) | config | Phase 3 |
 | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | Inngest | Phase 3 |
 | `FIRECRAWL_API_KEY` | Firecrawl | Phase 3 |
 | `ZG_ROUTER_API_KEY` (`sk-…`), optionally one per trust tier | pc.0g.ai | Phase 3/4 (**requires a funded 0G deposit — approval**) |

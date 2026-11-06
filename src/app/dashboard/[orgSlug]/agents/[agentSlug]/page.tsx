@@ -2,10 +2,9 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { BookOpen, ChevronLeft, Fingerprint, Globe, MessageSquare } from "lucide-react";
+import { BookOpen, Fingerprint, Globe, MessageSquare } from "lucide-react";
 import { AgentBuilderForm, type BuilderCatalog } from "@/components/agents/agent-builder-form";
 import { DeleteAgentDialog } from "@/components/agents/delete-agent-dialog";
-import { AgentStatusBadge, TrustBadge } from "@/components/agents/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,20 +53,6 @@ async function AgentBuilder({ params }: { params: Params }) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <Link
-          href={`/dashboard/${scope.orgSlug}/agents`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="size-4" /> Agents
-        </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-xl font-semibold tracking-tight">{config.name}</h2>
-          <AgentStatusBadge status={agent.status} hasUnpublishedChanges={agent.status === "published" && isDraft} />
-          <TrustBadge mode={config.trustMode} />
-        </div>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <AgentBuilderForm
           key={config.id}
@@ -113,10 +98,19 @@ async function AgentBuilder({ params }: { params: Params }) {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Next steps</CardTitle>
-              <CardDescription>These aren&apos;t available yet. They arrive in upcoming releases.</CardDescription>
+              <CardDescription>Items marked “Soon” arrive in upcoming releases.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <NextStep icon={BookOpen} title="Knowledge" body="Add website pages, documents and FAQs." />
+              <NextStep
+                icon={BookOpen}
+                title="Knowledge"
+                available
+                body={
+                  <Link href={`/dashboard/${scope.orgSlug}/agents/${agent.slug}/knowledge`} className="underline-offset-4 hover:underline">
+                    Add website pages, documents and FAQs →
+                  </Link>
+                }
+              />
               <NextStep icon={MessageSquare} title="Playground" body="Test answers with citations and verification status." />
               <NextStep icon={Globe} title="Publish" body="Public chat page and website widget." />
               <NextStep
@@ -147,13 +141,13 @@ async function AgentBuilder({ params }: { params: Params }) {
   );
 }
 
-function NextStep({ icon: Icon, title, body }: { icon: typeof BookOpen; title: string; body: React.ReactNode }) {
+function NextStep({ icon: Icon, title, body, available }: { icon: typeof BookOpen; title: string; body: React.ReactNode; available?: boolean }) {
   return (
     <div className="flex gap-3">
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
       <div>
         <p className="flex items-center gap-2 font-medium">
-          {title} <Badge variant="secondary">Soon</Badge>
+          {title} {available ? null : <Badge variant="secondary">Soon</Badge>}
         </p>
         <p className="text-muted-foreground">{body}</p>
       </div>
