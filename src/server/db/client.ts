@@ -7,7 +7,8 @@ import * as schema from "./schema";
 export type Database = PostgresJsDatabase<typeof schema>;
 
 export function createDatabase(url: string, options: { max?: number } = {}) {
-  const client = postgres(url, { max: options.max ?? 10, prepare: false });
+  // Pool size per server instance; keep small on serverless (Supabase session pooler). TLS comes from ?sslmode=require.
+  const client = postgres(url, { max: options.max ?? (Number(process.env.DB_POOL_MAX) || 10), prepare: false });
   return { db: drizzle(client, { schema, casing: "snake_case" }), client };
 }
 
