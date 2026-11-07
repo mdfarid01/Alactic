@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/server/auth/dal";
 import { catalogModelValidator } from "@/server/agents/model-validator";
-import { AgentError, createAgent, deleteAgent, saveDraft } from "@/server/agents/service";
+import { AgentError, createAgent, deleteAgent, publishDraft, saveDraft, setAgentLive } from "@/server/agents/service";
 import { db } from "@/server/db/client";
 import { authorizeOrg } from "@/server/orgs/service";
 
@@ -94,4 +94,34 @@ export async function deleteAgentAction(orgSlug: string, agentSlug: string): Pro
     return toState(error);
   }
   redirect(`/dashboard/${scope.orgSlug}/agents`);
+}
+
+export type PublishState = { ok?: boolean; error?: string; version?: number } | undefined;
+
+/** Freeze the current draft as a new immutable version and make it live on the public page and widget. */
+export async function publishAgentAction(orgSlug: string, agentSlug: string): Promise<PublishState> {
+  const scope = await editorScope(orgSlug);
+  if (!scope) return { error: "You don't have permission to publish this agent." };
+  try {
+    const { version } = await publishDraft(db(), scope, agentSlug);
+    refresh();
+    return { ok: true, version };
+  } catch (error) {
+    if (error instanceof AgentError) return { error: error.message };
+    throw error;
+  }
+}
+
+/** Pause (take offline) or resume a published agent. The published version is kept. */
+export async function setAgentLiveAction(orgSlug: string, agentSlug: string, live: boolean): Promise<PublishState> {
+  const scope = await editorScope(orgSlug);
+  if (!scope) return { error: "You don't have permission to change this agent." };
+  try {
+    await setAgentLive(db(), scope, agentSlug, live);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof AgentError) return { error: error.message };
+    throw error;
+  }
 }

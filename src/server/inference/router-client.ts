@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { TrustModeOption } from "@/lib/agent-options";
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+/** OpenAI-style content part. Images are sent inline as data: URIs (docs: router/features/image-inputs). */
+export type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string | ContentPart[] };
 
 export type ChatRequest = {
   model: string;
@@ -62,6 +64,15 @@ export interface ChatClient {
   complete(request: ChatRequest): Promise<ChatResult>;
 }
 
+export type TranscribeRequest = { model: string; trustMode: TrustModeOption; audio: Uint8Array; mime: string; filename: string };
+export type TranscribeResult = { text: string; chatId: string | null; trace: RouterTrace; verifyTeeRequested: boolean; latencyMs: number; durationSeconds: number | null };
+
+export interface Transcriber {
+  transcribe(request: TranscribeRequest): Promise<TranscribeResult>;
+}
+
+
+
 const traceSchema = z
   .object({
     request_id: z.string().nullish(),
@@ -77,6 +88,12 @@ const traceSchema = z
     tee_verified: z.boolean().nullish(),
   })
   .passthrough();
+
+const transcriptionSchema = z.object({
+  text: z.string(),
+  usage: z.object({ seconds: z.number().nullish() }).partial().nullish(),
+  x_0g_trace: traceSchema.nullish(),
+});
 
 const responseSchema = z.object({
   id: z.string().nullish(),
@@ -106,7 +123,7 @@ export type RouterClientConfig = {
  * - Never retries in a different trust mode. The only retry is one attempt after a 502 provider_error, same request.
  * Non-streaming because x_0g_trace (verification evidence) is only documented on non-streaming responses.
  */
-export class RouterChatClient implements ChatClient {
+export class RouterChatClient implements ChatClient, Transcriber {
   constructor(private readonly config: RouterClientConfig) {}
 
   async complete(request: ChatRequest): Promise<ChatResult> {
@@ -119,6 +136,47 @@ export class RouterChatClient implements ChatClient {
       if (error instanceof InferenceError && error.code === "provider_error") return this.once(request);
       throw error;
     }
+  }
+
+  /**
+   * Speech-to-text (POST /v1/audio/transcriptions, multipart). Same guarantees as chat: explicit trust-mode header,
+   * verify_tee as a query parameter for private/verified (docs: router/features/audio), no retry in another mode.
+   */
+  async transcribe(request: TranscribeRequest): Promise<TranscribeResult> {
+    if (!this.config.apiKey) {
+      throw new InferenceError("not_configured", "AI inference isn't configured on this server yet (0G Router API key missing).");
+    }
+    const verifyTee = request.trustMode !== "standard";
+    const form = new FormData();
+    form.set("file", new Blob([request.audio as BlobPart], { type: request.mime }), request.filename);
+    form.set("model", request.model);
+    form.set("response_format", "json");
+    const started = Date.now();
+    let res: Response;
+    try {
+      res = await (this.config.fetchImpl ?? fetch)(`${this.config.baseUrl}/audio/transcriptions${verifyTee ? "?verify_tee=true" : ""}`, {
+        method: "POST",
+        signal: AbortSignal.timeout(this.config.timeoutMs ?? 60_000),
+        headers: { authorization: `Bearer ${this.config.apiKey}`, "x-0g-provider-trust-mode": request.trustMode },
+        body: form,
+      });
+    } catch (error) {
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      throw new InferenceError(timedOut ? "timeout" : "network", timedOut ? "Transcription took too long." : "Couldn't reach the 0G Router.");
+    }
+    const latencyMs = Date.now() - started;
+    if (!res.ok) throw await toError(res, { model: request.model, trustMode: request.trustMode });
+    const json = transcriptionSchema.safeParse(await res.json().catch(() => null));
+    if (!json.success) throw new InferenceError("bad_response", "Unexpected transcription response from the 0G Router.", { httpStatus: res.status });
+    const trace = json.data.x_0g_trace;
+    return {
+      text: json.data.text.trim(),
+      chatId: res.headers.get("zg-res-key"),
+      trace: { requestId: trace?.request_id ?? null, provider: trace?.provider ?? null, cost: parseCost(trace?.billing ?? null), teeVerified: trace?.tee_verified ?? null },
+      verifyTeeRequested: verifyTee,
+      latencyMs,
+      durationSeconds: json.data.usage?.seconds ?? null,
+    };
   }
 
   private async once(request: ChatRequest): Promise<ChatResult> {
@@ -174,7 +232,7 @@ export class RouterChatClient implements ChatClient {
   }
 }
 
-async function toError(res: Response, request: ChatRequest): Promise<InferenceError> {
+async function toError(res: Response, request: Pick<ChatRequest, "model" | "trustMode">): Promise<InferenceError> {
   const parsed = errorSchema.safeParse(await res.json().catch(() => null));
   const routerCode = parsed.success ? (parsed.data.error.code ?? undefined) : undefined;
   const routerType = parsed.success ? (parsed.data.error.type ?? undefined) : undefined;

@@ -1,82 +1,182 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { upsertWalletUser } from "@/server/auth/sessions";
-import {
-  createAgent,
-  getAgentForEdit,
-  normalizeOrigin,
-  publishDraft,
-  resumeAgent,
-  saveDraft,
-  unpublishAgent,
-  updateAllowedOrigins,
-} from "@/server/agents/service";
+import { createAgent, normalizeOrigin, publishDraft, resumeAgent, setAgentLive, unpublishAgent, updateAllowedOrigins } from "@/server/agents/service";
 import { frameAncestorsHeader } from "@/server/public/embed-policy";
-import { getPublishedAgent, publicConversationHistory, publicInferenceEvidence } from "@/server/public/agents";
-import { consumeRateLimit } from "@/server/ratelimit";
-import { runAgent, type RunAgentDeps } from "@/server/runtime/run-agent";
+import { recentPublicAnswers } from "@/server/deploy/service";
+import { chunkPendingDocuments, embedNextBatch, finalizeRun, loadRun } from "@/server/knowledge/pipeline";
+import { addFaqSource, resolveAgent } from "@/server/knowledge/service";
 import { addMemberByWallet, authorizeOrg, createOrganization, type OrgScope } from "@/server/orgs/service";
+import { toPublicReply } from "@/server/public/reply";
+import { getPublicAgent, getPublicProof } from "@/server/public/service";
+import { consumeRateLimits } from "@/server/ratelimit/limiter";
+import { runAgent, RunAgentError, type RunAgentDeps } from "@/server/runtime/run-agent";
 import { setupTestDb } from "./helpers/db";
 import { FakeChat, HashingEmbedder } from "./helpers/fakes";
 
 const db = setupTestDb();
+const embedder = new HashingEmbedder();
 let acme: OrgScope;
-let member: OrgScope;
 let evil: OrgScope;
-const ok = async () => null;
-const TOKEN_A = "visitor-a-token-0123456789abcdef";
-const TOKEN_B = "visitor-b-token-0123456789abcdef";
-
-const deps = (): RunAgentDeps => ({
-  db,
-  chat: new FakeChat(() => ({ content: "Hello from the published agent." })),
-  embedder: new HashingEmbedder(),
-  dailyOrgLimit: 100,
-  modelSupports: async () => true,
-  verifyTee: async () => ({ status: "verified", reason: "test", signerAddress: "0xDdaEaac4d8525d72DfD20cc6dE0f28eb3d320Bfb", details: { recoveredAddress: "0xDdaE" } }),
-});
+let agentRef: { orgId: string; agentId: string };
 
 beforeEach(async () => {
-  const a = await upsertWalletUser(db, privateKeyToAccount(generatePrivateKey()).address);
-  const m = await upsertWalletUser(db, privateKeyToAccount(generatePrivateKey()).address);
-  const bob = privateKeyToAccount(generatePrivateKey());
-  await createOrganization(db, a, { name: "Acme", slug: "acme" });
-  await createOrganization(db, m, { name: "Evil", slug: "evil" });
-  acme = (await authorizeOrg(db, a, "acme"))!;
-  evil = (await authorizeOrg(db, m, "evil"))!;
-  await addMemberByWallet(db, acme, { address: bob.address, role: "member" });
-  member = (await authorizeOrg(db, await upsertWalletUser(db, bob.address), "acme"))!;
-  await createAgent(db, acme, { name: "Acme Support", slug: "acme-support" }, ok);
+  const alice = await upsertWalletUser(db, privateKeyToAccount(generatePrivateKey()).address);
+  const mallory = await upsertWalletUser(db, privateKeyToAccount(generatePrivateKey()).address);
+  await createOrganization(db, alice, { name: "Acme", slug: "acme" });
+  await createOrganization(db, mallory, { name: "Evil", slug: "evil" });
+  acme = (await authorizeOrg(db, alice, "acme"))!;
+  evil = (await authorizeOrg(db, mallory, "evil"))!;
+  await createAgent(db, acme, { name: "Acme Support", slug: "acme-support" }, async () => null);
+  agentRef = { orgId: acme.orgId, agentId: (await resolveAgent(db, acme, "acme-support")).id };
+  const t = await addFaqSource(db, acme, "acme-support", { question: "What is the refund policy?", answer: "Refunds are accepted within 45 days of delivery." });
+  const src = (await loadRun(db, t.sourceId, t.runId))!;
+  await chunkPendingDocuments(db, src, t.runId);
+  while ((await embedNextBatch(db, src, t.runId, embedder)) > 0);
+  await finalizeRun(db, src, t.runId);
 });
 
-describe("rate limiting", () => {
-  it("allows up to the limit per window, then blocks with a retry hint, and resets next window", async () => {
-    const t = new Date("2026-11-06T12:00:10Z");
-    for (let i = 0; i < 3; i++) expect((await consumeRateLimit(db, "k", 3, 60, t)).ok).toBe(true);
-    const blocked = await consumeRateLimit(db, "k", 3, 60, t);
-    expect(blocked).toMatchObject({ ok: false, retryAfter: 50 });
-    expect((await consumeRateLimit(db, "k", 3, 60, new Date("2026-11-06T12:01:01Z"))).ok).toBe(true);
+const SIGNER = "0x83df4B8EbA7c0B3B740019b8f9a8B6E8f2F1a1b1";
+const deps = (chat: FakeChat): RunAgentDeps => ({
+  db,
+  chat,
+  embedder,
+  dailyOrgLimit: 100,
+  modelSupports: async () => true,
+  verifyTee: async () => ({ status: "verified", reason: "test", signerAddress: SIGNER, details: { recoveredAddress: SIGNER } }),
+});
+const chat = () => new FakeChat(() => ({ content: "Refunds are accepted within 45 days of delivery [1]." }));
+const askPublic = (visitorTokenHash: string, conversationId: string | null = null) =>
+  runAgent(deps(chat()), {
+    agent: agentRef,
+    configVersion: "published",
+    channel: "web",
+    userMessage: "What is the refund policy after delivery?",
+    conversationId,
+    visitorTokenHash,
+  });
+
+describe("public agent visibility", () => {
+  it("only published, live agents are public; pausing takes them offline", async () => {
+    expect(await getPublicAgent(db, "acme-support")).toBeNull();
+    await expect(askPublic("v1")).rejects.toMatchObject({ code: "not_published" });
+
+    await publishDraft(db, acme, "acme-support");
+    const pub = await getPublicAgent(db, "acme-support");
+    expect(pub).toMatchObject({ slug: "acme-support", name: "Acme Support", orgName: "Acme", version: 1 });
+    expect(Object.keys(pub!)).not.toContain("instructions");
+    expect(Object.keys(pub!)).not.toContain("persona");
+
+    await setAgentLive(db, acme, "acme-support", false);
+    expect(await getPublicAgent(db, "acme-support")).toBeNull();
+    await expect(askPublic("v1")).rejects.toMatchObject({ code: "not_published" });
+    await setAgentLive(db, acme, "acme-support", true);
+    expect(await getPublicAgent(db, "acme-support")).not.toBeNull();
+  });
+
+  it("another org can't pause or publish this agent (cross-tenant)", async () => {
+    await publishDraft(db, acme, "acme-support");
+    await expect(setAgentLive(db, evil, "acme-support", false)).rejects.toMatchObject({ code: "not_found" });
+    await expect(publishDraft(db, evil, "acme-support")).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("rejects malformed slugs", async () => {
+    expect(await getPublicAgent(db, "../etc")).toBeNull();
+    expect(await getPublicAgent(db, "A")).toBeNull();
   });
 });
 
-describe("publishing & public lookup", () => {
-  it("drafts are never public; publish exposes the frozen version, not later edits", async () => {
-    expect(await getPublishedAgent(db, "acme-support")).toBeNull();
+describe("public chat: visitor isolation", () => {
+  it("a conversation can only be continued by the visitor who started it", async () => {
     await publishDraft(db, acme, "acme-support");
-    const current = (await getAgentForEdit(db, acme, "acme-support"))!;
-    await saveDraft(
+    const first = await askPublic("visitor-a");
+    const again = await askPublic("visitor-a", first.conversationId);
+    expect(again.conversationId).toBe(first.conversationId);
+    await expect(askPublic("visitor-b", first.conversationId)).rejects.toBeInstanceOf(RunAgentError);
+    await expect(askPublic("visitor-b", first.conversationId)).rejects.toMatchObject({ code: "conversation_not_found" });
+  });
+
+  it("the public reply has no retrieval diagnostics or internal reasons", async () => {
+    await publishDraft(db, acme, "acme-support");
+    const reply = toPublicReply(await askPublic("visitor-a"));
+    expect(reply).toMatchObject({ isFallback: false, verification: { status: "verified", method: "independent" } });
+    expect(Object.keys(reply)).toEqual(["conversationId", "question", "messageId", "content", "citations", "isFallback", "inference", "verification"]);
+    expect(Object.keys(reply.citations[0]).sort()).toEqual(["headingPath", "n", "pageFrom", "pageTo", "sourceType", "title", "url"]);
+  });
+});
+
+describe("proof receipts", () => {
+  it("expose inference metadata and checks, never message content", async () => {
+    await publishDraft(db, acme, "acme-support");
+    const r = await askPublic("visitor-a");
+    const proof = await getPublicProof(db, r.inference!.id);
+    expect(proof).toMatchObject({
+      status: "completed",
+      channel: "public",
+      modelId: "0gm-1.0-35b-a3b",
+      trustMode: "private",
+      routerRequestId: "req-1",
+      chatId: "chat-1",
+      agent: { slug: "acme-support", name: "Acme Support", orgName: "Acme" },
+    });
+    expect(proof!.checks.map((c) => [c.method, c.status])).toEqual([
+      ["router", "verified"],
+      ["independent", "verified"],
+    ]);
+    const json = JSON.stringify(proof);
+    expect(json).not.toContain("efund");
+    expect(json).not.toContain("45 days");
+  });
+
+  it("don't name an agent that isn't published, and reject bad ids", async () => {
+    const r = await runAgent(deps(chat()), { agent: agentRef, configVersion: "draft", channel: "playground", userMessage: "What is the refund policy after delivery?" });
+    const proof = await getPublicProof(db, r.inference!.id);
+    expect(proof).toMatchObject({ channel: "internal", agent: null });
+    expect(await getPublicProof(db, "not-a-uuid")).toBeNull();
+    expect(await getPublicProof(db, "00000000-0000-4000-8000-000000000000")).toBeNull();
+  });
+
+  it("recent public answers are org-scoped (cross-tenant)", async () => {
+    await publishDraft(db, acme, "acme-support");
+    await askPublic("visitor-a");
+    expect(await recentPublicAnswers(db, acme, agentRef.agentId)).toHaveLength(1);
+    expect(await recentPublicAnswers(db, evil, agentRef.agentId)).toHaveLength(0);
+  });
+});
+
+describe("rate limiter", () => {
+  it("allows up to the limit per window, then rejects with a retry time; windows reset", async () => {
+    const t0 = new Date("2026-11-07T10:00:05Z");
+    const rule = { key: "test:a", limit: 2, windowSeconds: 60 };
+    expect(await consumeRateLimits(db, [rule], t0)).toEqual({ ok: true });
+    expect(await consumeRateLimits(db, [rule], t0)).toEqual({ ok: true });
+    expect(await consumeRateLimits(db, [rule], t0)).toEqual({ ok: false, key: "test:a", retryAfterSeconds: 55 });
+    expect(await consumeRateLimits(db, [rule], new Date("2026-11-07T10:01:00Z"))).toEqual({ ok: true });
+  });
+
+  it("rejects when any one rule is exceeded; keys are independent", async () => {
+    const t0 = new Date("2026-11-07T10:00:00Z");
+    await consumeRateLimits(db, [{ key: "test:ip", limit: 1, windowSeconds: 60 }], t0);
+    const d = await consumeRateLimits(
       db,
-      acme,
-      "acme-support",
-      {
-        config: { ...current.config, name: "Renamed in draft", language: current.config.language as "auto" },
-        expectedUpdatedAt: current.config.updatedAt.toISOString(),
-      },
-      ok,
+      [
+        { key: "test:visitor", limit: 5, windowSeconds: 60 },
+        { key: "test:ip", limit: 1, windowSeconds: 60 },
+      ],
+      t0,
     );
-    expect(await getPublishedAgent(db, "acme-support")).toMatchObject({ name: "Acme Support", version: 1 });
-    await publishDraft(db, acme, "acme-support");
-    expect(await getPublishedAgent(db, "acme-support")).toMatchObject({ name: "Renamed in draft", version: 2 });
+    expect(d).toMatchObject({ ok: false, key: "test:ip" });
+    expect(await consumeRateLimits(db, [{ key: "test:other", limit: 1, windowSeconds: 60 }], t0)).toEqual({ ok: true });
+  });
+});
+
+// Ported from main (widget allowed sites, unpublish/resume), adapted to the merged runtime.
+describe("unpublish / resume and widget allowed sites", () => {
+  let member: OrgScope;
+  beforeEach(async () => {
+    const bob = privateKeyToAccount(generatePrivateKey());
+    await addMemberByWallet(db, acme, { address: bob.address, role: "member" });
+    member = (await authorizeOrg(db, await upsertWalletUser(db, bob.address), "acme"))!;
   });
 
   it("unpublish takes it offline; resume brings back the same version; members can't do either", async () => {
@@ -84,13 +184,11 @@ describe("publishing & public lookup", () => {
     await expect(unpublishAgent(db, member, "acme-support")).rejects.toMatchObject({ code: "forbidden" });
     await expect(unpublishAgent(db, evil, "acme-support")).rejects.toMatchObject({ code: "not_found" });
     await unpublishAgent(db, acme, "acme-support");
-    expect(await getPublishedAgent(db, "acme-support")).toBeNull();
+    expect(await getPublicAgent(db, "acme-support")).toBeNull();
     await resumeAgent(db, acme, "acme-support");
-    expect(await getPublishedAgent(db, "acme-support")).toMatchObject({ version: 1 });
+    expect(await getPublicAgent(db, "acme-support")).toMatchObject({ version: 1 });
   });
-});
 
-describe("widget allowed sites", () => {
   it.each([
     ["https://shop.example.com", "https://shop.example.com"],
     ["https://shop.example.com/", "https://shop.example.com"],
@@ -118,42 +216,11 @@ describe("widget allowed sites", () => {
     expect(frameAncestorsHeader([])).toBe("frame-ancestors 'self'");
     expect(frameAncestorsHeader(["https://a.example.com"])).toBe("frame-ancestors 'self' https://a.example.com");
   });
-});
 
-describe("anonymous public chat", () => {
-  async function published() {
+  it("public channels require a visitor identity", async () => {
     await publishDraft(db, acme, "acme-support");
-    const a = (await getPublishedAgent(db, "acme-support"))!;
-    return { orgId: a.orgId, agentId: a.agentId };
-  }
-
-  it("requires a visitor token on public channels", async () => {
-    const agent = await published();
-    await expect(runAgent(deps(), { agent, configVersion: "published", channel: "web", userMessage: "hi" })).rejects.toMatchObject({ code: "invalid_message" });
-  });
-
-  it("a different visitor can't continue or read someone else's conversation", async () => {
-    const agent = await published();
-    const first = await runAgent(deps(), { agent, configVersion: "published", channel: "web", userMessage: "hi", visitorToken: TOKEN_A });
     await expect(
-      runAgent(deps(), { agent, configVersion: "published", channel: "web", userMessage: "hi again", visitorToken: TOKEN_B, conversationId: first.conversationId }),
-    ).rejects.toMatchObject({ code: "conversation_not_found" });
-    expect(await publicConversationHistory(db, agent, first.conversationId, TOKEN_B)).toBeNull();
-
-    const mine = await publicConversationHistory(db, agent, first.conversationId, TOKEN_A);
-    expect(mine?.map((m) => m.role)).toEqual(["user", "assistant"]);
-    expect(mine?.[1].verification).toEqual({ status: "verified", method: "independent" });
-  });
-
-  it("verification evidence is public only for public-channel answers and contains no message content", async () => {
-    const agent = await published();
-    const web = await runAgent(deps(), { agent, configVersion: "published", channel: "web", userMessage: "secret question", visitorToken: TOKEN_A });
-    const ev = await publicInferenceEvidence(db, web.inference!.id);
-    expect(ev).toMatchObject({ modelId: "0gm-1.0-35b-a3b", trustMode: "private", channel: "web", agentSlug: "acme-support" });
-    expect(JSON.stringify(ev)).not.toContain("secret question");
-    expect(JSON.stringify(ev)).not.toContain("Hello from the published agent");
-
-    const play = await runAgent(deps(), { agent, configVersion: "draft", channel: "playground", userMessage: "internal test" });
-    expect(await publicInferenceEvidence(db, play.inference!.id)).toBeNull();
+      runAgent(deps(chat()), { agent: agentRef, configVersion: "published", channel: "widget", userMessage: "What is the refund policy after delivery?" }),
+    ).rejects.toMatchObject({ code: "invalid_message" });
   });
 });

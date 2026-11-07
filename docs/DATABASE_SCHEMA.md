@@ -80,6 +80,25 @@ Index `(org_id, agent_id, requested_at desc)`.
 **verification_records** — `id`, `org_id`, `inference_id → inference_records`, `method` (`router` | `independent`), `status` (`not_requested` | `verified` | `failed` | `unavailable`), `signer_address?`, `signature?`, `signed_text_sha256?`, `response_text_sha256?`, `details` jsonb (non-sensitive), `checked_at`.
 Multiple rows per inference allowed (Router result, later independent check).
 
+### Knowledge gaps & abuse controls (migrations 0006–0007)
+
+**knowledge_gaps** — `id`, `org_id`, `agent_id` (composite FK → agents), `first_message_id?` → messages, `question` (≤ 500 chars, copy of the first ask), `channel`, `embedding vector(1024)?`, `embedding_model?`, `ask_count`, `status` (`open` | `answered` | `dismissed`), `answer_source_id?` (FAQ source created on answer), `first_asked_at`, `last_asked_at`, `resolved_at?`, `resolved_by?`. Written by the runtime when the model replies with the fallback (not on outages). Open gaps whose embedding has cosine similarity ≥ 0.80 merge (`ask_count + 1`). All reads/writes are OrgScope-scoped (`src/server/gaps/service.ts`, tested in `tests/gaps.test.ts`).
+
+**rate_limit_buckets** — `key` (namespaced hash, e.g. `chat:visitor:<sha256>`), `window_start`, `count`; PK (`key`, `window_start`). Fixed-window counters for public endpoints. No raw IPs or tokens.
+
+`messages.attachment_kind` (`voice` | `image` | null) and `messages.pre_inference_id` → inference_records (the transcription / screenshot-reading inference) were added in migration 0008. The audio or image itself is never stored.
+
+`conversations.visitor_token_hash` is now set for public channels; a conversation can only be continued by the same visitor token.
+
+### Test suite & answer fingerprints (migrations 0010–0011)
+
+`inference_records.answer_sha256`: SHA-256 of `alactic-answer-v1:<id>:<displayed answer>`, public on the proof receipt.
+**agent_test_cases** (`question`, `must_include` jsonb, `expect_answer`), **agent_test_runs** (`config_id`, `config_version`, `status` running/passed/failed/error, `total`, `passed`), **agent_test_results** (`question` copy, `passed`, `reasons` jsonb, `answer_excerpt`, `inference_id`). All org-scoped (`src/server/tests/service.ts`, `tests/features.test.ts`).
+
+### Handoff & digests (migrations 0012–0013)
+
+**handoff_requests**: `conversation_id` (tenant FK), `channel`, `contact?` (≤200), `note?` (≤1000), `summary?`, `summary_inference_id?`, `status` open/resolved, `resolved_by?`. **org_digests**: PK (`org_id`, `day` YYYY-MM-DD), `content`, `stats` jsonb, `inference_id?`. Team-side inferences (drafts, digests) belong to an internal playground conversation with `external_ref` `studio:<user>` / `studio:digest`.
+
 ### Deployment, identity, manifest
 
 **agent_deployments** — `id`, `org_id`, `agent_id`, `config_id`, `manifest_id`, `published_by`, `published_at`, `allowed_origins` text[] (widget), `is_current` bool.
@@ -93,7 +112,9 @@ For `managed` names, record values are derived from the current deployment + man
 
 ### Integrations & usage
 
-**integrations** — `id`, `org_id`, `agent_id`, `type` (`discord` | `slack` | `zendesk`), `status` (`pending` | `active` | `error` | `revoked`), `external_workspace_id` (guild id / team id / zendesk subdomain), `credentials_encrypted` bytea (AES-256-GCM, app-level key, never returned to the client), `config` jsonb, `installed_by`, timestamps.
+**channel_connections** (implemented, migration 0009; replaces the planned `integrations` table) — `id`, `org_id`, `agent_id` (composite FK), `platform` (`telegram` | `discord` | `slack` | `whatsapp` | `zendesk`), `status` (`active` | `paused` | `error`), `label`, `external_id` (bot id / team id / phone number id / app id; unique per platform), `delivery_mode` (`webhook` | `polling`), `credentials_encrypted` (AES-256-GCM `v1:` payload), `last_error?`, `last_event_at?`, `created_by`, timestamps. **connector_events** — (`connection_id`, `event_key`) PK for webhook dedupe. `conversation_channel` gained `telegram` and `whatsapp`; connector conversations use `external_ref = <connectionId>:<thread>`.
+
+_Original plan:_ **integrations** — `id`, `org_id`, `agent_id`, `type` (`discord` | `slack` | `zendesk`), `status` (`pending` | `active` | `error` | `revoked`), `external_workspace_id` (guild id / team id / zendesk subdomain), `credentials_encrypted` bytea (AES-256-GCM, app-level key, never returned to the client), `config` jsonb, `installed_by`, timestamps.
 Unique `(type, external_workspace_id)` — one workspace maps to one agent route.
 
 **usage_events** — `id`, `org_id`, `agent_id?`, `kind` (`inference` | `embedding` | `crawl_page`), `quantity`, `input_tokens?`, `output_tokens?`, `cost_neuron?`, `inference_id?`, `created_at`.

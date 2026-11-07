@@ -155,10 +155,10 @@ describe("runAgent: failure modes", () => {
 
   it("public channels require a published version; playground uses the draft", async () => {
     const chat = new FakeChat(() => ({ content: "ok" }));
-    const visitorToken = "visitor-token-0123456789abcdef";
-    await expect(ask(chat, "hi", { configVersion: "published", channel: "web", visitorToken })).rejects.toMatchObject({ code: "not_published" });
+    const visitorTokenHash = "visitor-token-hash-0123456789abcdef";
+    await expect(ask(chat, "hi", { configVersion: "published", channel: "web", visitorTokenHash })).rejects.toMatchObject({ code: "not_published" });
     await publishDraft(db, acme, "acme-support");
-    const r = await ask(chat, "hi", { configVersion: "published", channel: "web", visitorToken });
+    const r = await ask(chat, "hi", { configVersion: "published", channel: "web", visitorTokenHash });
     expect(r.inference?.status).toBe("completed");
   });
 
@@ -199,7 +199,7 @@ describe("runAgent: tenant isolation", () => {
     const chat = new FakeChat(() => ({ content: "ok" }));
     const first = await ask(chat);
     await publishDraft(db, acme, "acme-support");
-    await expect(ask(chat, "hi", { configVersion: "published", channel: "web", conversationId: first.conversationId, visitorToken: "visitor-token-0123456789abcdef" })).rejects.toMatchObject({
+    await expect(ask(chat, "hi", { configVersion: "published", channel: "web", conversationId: first.conversationId, visitorTokenHash: "visitor-token-hash-0123456789abcdef" })).rejects.toMatchObject({
       code: "conversation_not_found",
     });
   });

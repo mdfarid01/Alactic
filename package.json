@@ -16,7 +16,9 @@
     "db:studio": "drizzle-kit studio",
     "inngest:dev": "npx --yes inngest-cli@latest dev -u http://localhost:3000/api/inngest --no-discovery",
     "zg:check": "node --env-file=.env.local scripts/zg-live-check.mjs",
-    "dev:clean": "rm -rf .next/dev && next dev"
+    "dev:clean": "rm -rf .next/dev && next dev",
+    "seed:demo": "tsx --conditions react-server --env-file=.env.local scripts/seed-demo.ts",
+    "connectors:poll": "tsx --conditions react-server --env-file=.env.local scripts/connectors-poll.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -50,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

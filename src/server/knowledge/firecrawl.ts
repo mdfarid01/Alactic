@@ -80,6 +80,29 @@ export class FirecrawlCrawler implements Crawler {
     return parsed.data.id;
   }
 
+  /**
+   * Scrape one page (POST /v2/scrape, formats ["markdown"]; response `data.markdown`, checked live 2026-11-07).
+   * Used to draft gap answers from a single page of the business's own site.
+   */
+  async scrape(url: string): Promise<CrawledPage> {
+    const res = await this.fetchImpl(`${this.baseUrl}/scrape`, {
+      method: "POST",
+      headers: this.headers(),
+      signal: AbortSignal.timeout(45_000),
+      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+    }).catch(() => {
+      throw new CrawlerError("Couldn't reach the crawling service.", true);
+    });
+    if (!res.ok) throw new CrawlerError(`The page couldn't be fetched (HTTP ${res.status}).`, res.status >= 500 || res.status === 429);
+    const body = (await res.json().catch(() => null)) as { success?: boolean; data?: unknown } | null;
+    const page = pageSchema.safeParse(body?.data);
+    if (!body?.success || !page.success || !page.data.markdown) throw new CrawlerError("The page had no readable content.", false);
+    const meta = page.data.metadata;
+    if (meta?.statusCode && meta.statusCode >= 400) throw new CrawlerError(`The page returned HTTP ${meta.statusCode}.`, false);
+    const title = Array.isArray(meta?.title) ? meta.title[0] : meta?.title;
+    return { url: meta?.url ?? meta?.sourceURL ?? url, title: (title || url).slice(0, 200), markdown: page.data.markdown };
+  }
+
   async check(jobId: string): Promise<CrawlJobState> {
     const pages: CrawledPage[] = [];
     let url: string | null = `${this.baseUrl}/crawl/${encodeURIComponent(jobId)}`;

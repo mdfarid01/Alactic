@@ -2,46 +2,63 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Check, Copy, Loader2, Pause, Play, Rocket } from "lucide-react";
-import { toast } from "sonner";
-import { publishAction, resumeAction, saveOriginsAction, unpublishAction, type DeployState } from "@/app/dashboard/[orgSlug]/agents/[agentSlug]/deploy/actions";
-import { Button } from "@/components/ui/button";
+import { saveOriginsAction, type DeployState } from "@/app/dashboard/[orgSlug]/agents/[agentSlug]/deploy/actions";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { publishAgentAction, setAgentLiveAction } from "@/app/dashboard/[orgSlug]/agents/actions";
+import { Button } from "@/components/ui/button";
 
-export function PublishControls({
+export function PublishButtons({
   orgSlug,
   agentSlug,
-  status,
+  canPublish,
   hasUnpublishedChanges,
-  canEdit,
+  status,
 }: {
   orgSlug: string;
   agentSlug: string;
-  status: string;
+  canPublish: boolean;
   hasUnpublishedChanges: boolean;
-  canEdit: boolean;
+  status: string;
 }) {
   const [pending, start] = useTransition();
-  const act = (fn: () => Promise<DeployState>) =>
-    start(async () => {
-      const r = await fn();
-      if (r?.error) toast.error(r.error);
-      else if (r?.message) toast.success(r.message);
-    });
-  if (!canEdit) return null;
+  const neverPublished = status === "draft";
   return (
     <div className="flex flex-wrap gap-2">
-      <Button disabled={pending || !hasUnpublishedChanges} onClick={() => act(() => publishAction(orgSlug, agentSlug))}>
-        {pending ? <Loader2 className="animate-spin" /> : <Rocket />}
-        {status === "draft" ? "Publish" : hasUnpublishedChanges ? "Publish changes" : "Up to date"}
+      <Button
+        disabled={!canPublish || pending || !hasUnpublishedChanges}
+        onClick={() =>
+          start(async () => {
+            const r = await publishAgentAction(orgSlug, agentSlug);
+            if (r?.error) toast.error(r.error);
+            else toast.success(`Version ${r?.version} is live`);
+          })
+        }
+      >
+        <Rocket /> {neverPublished ? "Publish agent" : hasUnpublishedChanges ? "Publish changes" : "Up to date"}
       </Button>
-      {status === "published" ? (
-        <Button variant="outline" disabled={pending} onClick={() => act(() => unpublishAction(orgSlug, agentSlug))}>
-          <Pause /> Unpublish
-        </Button>
-      ) : null}
-      {status === "paused" ? (
-        <Button variant="outline" disabled={pending} onClick={() => act(() => resumeAction(orgSlug, agentSlug))}>
-          <Play /> Resume
+      {!neverPublished ? (
+        <Button
+          variant="outline"
+          disabled={!canPublish || pending}
+          onClick={() =>
+            start(async () => {
+              const live = status !== "published";
+              const r = await setAgentLiveAction(orgSlug, agentSlug, live);
+              if (r?.error) toast.error(r.error);
+              else toast.success(live ? "Agent is live again" : "Agent paused. Public chat is offline.");
+            })
+          }
+        >
+          {status === "published" ? (
+            <>
+              <Pause /> Pause
+            </>
+          ) : (
+            <>
+              <Play /> Resume
+            </>
+          )}
         </Button>
       ) : null}
     </div>
@@ -52,12 +69,18 @@ export function CopyField({ value, label, multiline = false }: { value: string; 
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-start gap-2">
-      <pre className={`min-w-0 flex-1 overflow-x-auto rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs ${multiline ? "whitespace-pre-wrap" : ""}`} aria-label={label}>
-        {value}
-      </pre>
+      {multiline ? (
+        <pre className="flex-1 overflow-x-auto rounded-md border bg-muted px-3 py-2 font-mono text-xs whitespace-pre-wrap" aria-label={label}>
+          {value}
+        </pre>
+      ) : (
+        <code className="flex-1 truncate rounded-md border bg-muted px-3 py-2 font-mono text-xs" aria-label={label}>
+          {value}
+        </code>
+      )}
       <Button
         variant="outline"
-        size="icon-sm"
+        size="sm"
         aria-label={`Copy ${label}`}
         onClick={async () => {
           await navigator.clipboard.writeText(value);
@@ -71,14 +94,22 @@ export function CopyField({ value, label, multiline = false }: { value: string; 
   );
 }
 
+/** Sites allowed to embed the widget (CSP frame-ancestors on /embed/<slug>). From main, by the widget allow-list work. */
 export function OriginsForm({ orgSlug, agentSlug, origins, canEdit }: { orgSlug: string; agentSlug: string; origins: string[]; canEdit: boolean }) {
   const [state, action, pending] = useActionState<DeployState, FormData>(saveOriginsAction.bind(null, orgSlug, agentSlug), undefined);
   return (
     <form action={action} className="grid gap-3">
-      <Textarea name="origins" rows={3} defaultValue={origins.join("\n")} disabled={!canEdit} placeholder={"https://www.yourshop.com\nhttps://help.yourshop.com"} className="font-mono text-xs" />
+      <Textarea
+        name="origins"
+        rows={3}
+        defaultValue={origins.join("\n")}
+        disabled={!canEdit}
+        placeholder={"https://www.yourshop.com\nhttps://help.yourshop.com"}
+        className="font-mono text-xs"
+      />
       <p className="text-xs text-muted-foreground">
-        One site per line, e.g. <span className="font-mono">https://www.yourshop.com</span>. Browsers will refuse to show the widget on any other
-        site. Alactic&apos;s own pages (including the demo page) are always allowed.
+        One site per line, e.g. <span className="font-mono">https://www.yourshop.com</span>. Browsers will refuse to show the widget on any other site.
+        Alactic&apos;s own pages (including the demo page) are always allowed.
       </p>
       {state?.error ? <p className="text-sm text-destructive">{state.error}</p> : state?.message ? <p className="text-sm text-success">{state.message}</p> : null}
       {canEdit ? (

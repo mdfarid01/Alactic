@@ -1,7 +1,8 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import type { TrustModeOption } from "@/lib/agent-options";
 import { env } from "@/server/env";
-import { parseChatModels, parseTrustAvailability, type CatalogModel, type TrustAvailability } from "./catalog-parse";
+import { parseChatModels, parseSpeechModels, parseTrustAvailability, type CatalogModel, type SpeechModel, type TrustAvailability } from "./catalog-parse";
 
 const TIMEOUT_MS = 15_000;
 /** Last catalog successfully fetched from 0G, used only if 0G is temporarily unreachable (never invented data). */
@@ -27,6 +28,27 @@ async function fetchChatModels(): Promise<CatalogModel[]> {
   "use cache";
   cacheLife("minutes");
   return parseChatModels(await getJson(`${env().ZG_ROUTER_BASE_URL}/models`));
+}
+
+async function fetchSpeechModels(): Promise<SpeechModel[]> {
+  "use cache";
+  cacheLife("minutes");
+  return parseSpeechModels(await getJson(`${env().ZG_ROUTER_BASE_URL}/models`));
+}
+
+/**
+ * What a published agent can accept besides text, from the live catalog:
+ * images if its chat model lists the "image" input modality; voice if the configured speech model supports the agent's trust mode.
+ */
+export async function mediaCapabilities(modelId: string, trustMode: TrustModeOption): Promise<{ images: boolean; voice: boolean }> {
+  try {
+    const [models, speech] = await Promise.all([fetchChatModels(), fetchSpeechModels()]);
+    const chat = models.find((m) => m.id === modelId);
+    const stt = speech.find((m) => m.id === env().TRANSCRIPTION_MODEL);
+    return { images: chat?.inputModalities.includes("image") ?? false, voice: stt?.trustModes.includes(trustMode) ?? false };
+  } catch {
+    return { images: false, voice: false };
+  }
 }
 
 async function fetchTrustAvailability(modelId: string): Promise<TrustAvailability> {

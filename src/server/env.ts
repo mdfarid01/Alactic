@@ -47,6 +47,10 @@ const envSchema = z.object({
   EMBEDDING_SEND_DIMENSIONS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   /** Cost guard: max AI responses per organization per UTC day. */
   INFERENCE_DAILY_ORG_LIMIT: z.coerce.number().int().min(1).max(1_000_000).default(500),
+  /** Speech-to-text model on the 0G Router for voice questions (TeeML on 2026-11-07, so it can run in Private mode). */
+  TRANSCRIPTION_MODEL: z.string().min(1).default("whisper-large-v3"),
+  /** AES-256-GCM key (32 bytes, base64) for stored connector credentials. Required only to use connectors. */
+  CONNECTOR_ENCRYPTION_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   /** Firecrawl API key for website crawling. Server-only. */
   FIRECRAWL_API_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   ZG_ROUTER_BASE_URL: z.url().default("https://router-api.0g.ai/v1").transform((u) => u.replace(/\/+$/, "")),

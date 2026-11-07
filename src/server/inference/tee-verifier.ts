@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { createPublicClient, defineChain, getAddress, http, isAddress, isAddressEqual, isHex, recoverMessageAddress, type Hex } from "viem";
+import { CHAT_ID_RE, expectedSigner, getServiceAbi, signatureUrl, type ServiceRecord } from "@/lib/tee-shared";
 import { validateCrawlUrl } from "@/server/knowledge/url-policy";
+
+export type { ServiceRecord } from "@/lib/tee-shared";
 
 /**
  * Independent TEE signature verification (no trust in the Router's verdict), following 0G's documented procedure
@@ -24,15 +27,6 @@ export type TeeVerification = {
   details: Record<string, unknown>;
 };
 
-export type ServiceRecord = {
-  url: string;
-  model: string;
-  verifiability: string;
-  teeSignerAddress: string;
-  teeSignerAcknowledged: boolean;
-  additionalInfo: string;
-};
-
 export type TeeVerifierDeps = {
   readService: (provider: Hex) => Promise<ServiceRecord>;
   fetchImpl?: typeof fetch;
@@ -41,34 +35,6 @@ export type TeeVerifierDeps = {
   notFoundRetries?: number;
   retryDelayMs?: number;
 };
-
-const getServiceAbi = [
-  {
-    type: "function",
-    name: "getService",
-    stateMutability: "view",
-    inputs: [{ name: "provider", type: "address" }],
-    outputs: [
-      {
-        name: "service",
-        type: "tuple",
-        components: [
-          { name: "provider", type: "address" },
-          { name: "serviceType", type: "string" },
-          { name: "url", type: "string" },
-          { name: "inputPrice", type: "uint256" },
-          { name: "outputPrice", type: "uint256" },
-          { name: "updatedAt", type: "uint256" },
-          { name: "model", type: "string" },
-          { name: "verifiability", type: "string" },
-          { name: "additionalInfo", type: "string" },
-          { name: "teeSignerAddress", type: "address" },
-          { name: "teeSignerAcknowledged", type: "bool" },
-        ],
-      },
-    ],
-  },
-] as const;
 
 /** On-chain reader with a short cache (service records change rarely). */
 export function chainServiceReader(config: { rpcUrl: string; chainId: number; contract: Hex; cacheMs?: number }) {
@@ -98,25 +64,13 @@ export function chainServiceReader(config: { rpcUrl: string; chainId: number; co
   };
 }
 
-function expectedSigner(svc: ServiceRecord): string {
-  try {
-    const info = JSON.parse(svc.additionalInfo) as { ProviderType?: string; TargetSeparated?: boolean; TargetTeeAddress?: string };
-    const centralized = info.ProviderType === "centralized";
-    if (info.TargetSeparated === true && !centralized && info.TargetTeeAddress) return info.TargetTeeAddress;
-  } catch {
-    // Same as the SDK: unparsable additionalInfo is not verifiable.
-    throw new Error("unparsable additionalInfo");
-  }
-  return svc.teeSignerAddress;
-}
-
 export async function verifyTeeSignature(
   deps: TeeVerifierDeps,
   input: { provider: string | null; chatId: string | null },
 ): Promise<TeeVerification> {
   const none = (reason: string, details: Record<string, unknown> = {}): TeeVerification => ({ status: "unavailable", reason, signerAddress: null, details });
   if (!input.provider || !isAddress(input.provider)) return none("The response didn't identify an on-chain provider.");
-  if (!input.chatId || !/^[A-Za-z0-9._:-]{1,200}$/.test(input.chatId)) return none("The response didn't include a usable chat ID.");
+  if (!input.chatId || !CHAT_ID_RE.test(input.chatId)) return none("The response didn't include a usable chat ID.");
 
   let svc: ServiceRecord;
   try {
@@ -137,7 +91,7 @@ export async function verifyTeeSignature(
   } catch {
     return { status: "failed", reason: "The provider's on-chain service info is malformed.", signerAddress: null, details: base };
   }
-  const url = validateCrawlUrl(`${svc.url.replace(/\/+$/, "")}/v1/proxy/signature/${encodeURIComponent(input.chatId)}?model=${encodeURIComponent(svc.model)}`);
+  const url = validateCrawlUrl(signatureUrl(svc, input.chatId));
   if (!url.ok || url.url.protocol !== "https:") return none("The provider's signature endpoint isn't a public https URL.", base);
 
   const doFetch = deps.fetchImpl ?? fetch;

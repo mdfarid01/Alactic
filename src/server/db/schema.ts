@@ -327,7 +327,7 @@ export const knowledgeChunks = pgTable(
 
 // ─── Conversations & inference ────────────────────────────────────────────────
 
-export const conversationChannel = pgEnum("conversation_channel", ["playground", "web", "widget", "discord", "slack", "zendesk"]);
+export const conversationChannel = pgEnum("conversation_channel", ["playground", "web", "widget", "discord", "slack", "zendesk", "telegram", "whatsapp"]);
 export type ConversationChannel = (typeof conversationChannel.enumValues)[number];
 
 export const conversations = pgTable(
@@ -350,6 +350,7 @@ export const conversations = pgTable(
     foreignKey({ name: "conversations_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
     unique("conversations_tenant_unique").on(t.id, t.agentId, t.orgId),
     index("conversations_agent_recent_idx").on(t.agentId, t.lastMessageAt),
+    index("conversations_external_ref_idx").on(t.agentId, t.channel, t.externalRef),
     check("conversations_public_needs_visitor", sql`${t.channel} not in ('web', 'widget') or ${t.visitorTokenHash} is not null`),
   ],
 );
@@ -378,6 +379,11 @@ export const inferenceRecords = pgTable(
     costAmount: numeric("cost_amount", { precision: 78, scale: 0 }),
     costUnit: text("cost_unit"),
     latencyMs: integer("latency_ms"),
+    /**
+     * SHA-256 of `alactic-answer-v1:<inference id>:<text shown to the customer>` (see src/lib/answer-fingerprint.ts).
+     * Public on the proof receipt, so a customer can prove which exact answer they received without sharing it with us.
+     */
+    answerSha256: text("answer_sha256"),
     errorType: text("error_type"),
     errorCode: text("error_code"),
     httpStatus: integer("http_status"),
@@ -417,6 +423,235 @@ export const verificationRecords = pgTable(
   (t) => [index("verification_records_inference_idx").on(t.inferenceId)],
 );
 
+// ─── Knowledge gaps ───────────────────────────────────────────────────────────
+
+export const knowledgeGapStatus = pgEnum("knowledge_gap_status", ["open", "answered", "dismissed"]);
+export type KnowledgeGapStatus = (typeof knowledgeGapStatus.enumValues)[number];
+
+/**
+ * Questions the agent couldn't answer from its knowledge (it gave the fallback). Near-duplicate questions are merged
+ * via the query embedding, so the inbox shows "asked N times". The question text lives in `messages`; this row only
+ * references the first occurrence.
+ */
+export const knowledgeGaps = pgTable(
+  "knowledge_gaps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    firstMessageId: uuid("first_message_id").references(() => messages.id, { onDelete: "set null" }),
+    /** Copy of the first question (≤ 500 chars) so the gap survives conversation deletion. Tenant data, org-scoped. */
+    question: text("question").notNull(),
+    channel: conversationChannel("channel").notNull(),
+    embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
+    embeddingModel: text("embedding_model"),
+    askCount: integer("ask_count").notNull().default(1),
+    status: knowledgeGapStatus("status").notNull().default("open"),
+    /** FAQ source created when an admin answered this gap. */
+    answerSourceId: uuid("answer_source_id"),
+    firstAskedAt: timestamp("first_asked_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAskedAt: timestamp("last_asked_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    foreignKey({ name: "knowledge_gaps_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
+    index("knowledge_gaps_agent_status_idx").on(t.agentId, t.status, t.lastAskedAt),
+    index("knowledge_gaps_org_status_idx").on(t.orgId, t.status),
+    check("knowledge_gaps_question_length", sql`char_length(${t.question}) between 1 and 500`),
+  ],
+);
+
+// ─── Owner digest ─────────────────────────────────────────────────────────────
+
+/** One briefing per organization per UTC day: aggregate stats + a short 0G-written summary (with proof receipt). */
+export const orgDigests = pgTable(
+  "org_digests",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    content: text("content").notNull(),
+    stats: jsonb("stats").$type<Record<string, unknown>>().notNull(),
+    inferenceId: uuid("inference_id").references(() => inferenceRecords.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.day] }), check("org_digests_day_format", sql`${t.day} ~ '^\\d{4}-\\d{2}-\\d{2}$'`)],
+);
+
+// ─── Human handoff ────────────────────────────────────────────────────────────
+
+export const handoffStatus = pgEnum("handoff_status", ["open", "resolved"]);
+
+/**
+ * A customer asked for a human. Carries a 0G-generated summary of the conversation (with its own proof receipt) so the
+ * team can pick up without rereading everything. Contact details are tenant data, visible only to the org.
+ */
+export const handoffRequests = pgTable(
+  "handoff_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    channel: conversationChannel("channel").notNull(),
+    contact: text("contact"),
+    note: text("note"),
+    summary: text("summary"),
+    summaryInferenceId: uuid("summary_inference_id").references(() => inferenceRecords.id, { onDelete: "set null" }),
+    status: handoffStatus("status").notNull().default("open"),
+    createdAt: createdAt(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    foreignKey({
+      name: "handoff_requests_conversation_tenant_fk",
+      columns: [t.conversationId, t.agentId, t.orgId],
+      foreignColumns: [conversations.id, conversations.agentId, conversations.orgId],
+    }).onDelete("cascade"),
+    index("handoff_requests_org_status_idx").on(t.orgId, t.status, t.createdAt),
+    check("handoff_requests_contact_length", sql`${t.contact} is null or char_length(${t.contact}) <= 200`),
+    check("handoff_requests_note_length", sql`${t.note} is null or char_length(${t.note}) <= 1000`),
+  ],
+);
+
+// ─── Agent test suite ─────────────────────────────────────────────────────────
+
+/** A "golden question" with what a correct answer must contain (or that the agent must decline). */
+export const agentTestCases = pgTable(
+  "agent_test_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    question: text("question").notNull(),
+    /** Phrases the answer must contain (case-insensitive). Empty = any non-fallback answer passes. */
+    mustInclude: jsonb("must_include").$type<string[]>().notNull().default([]),
+    /** false = the agent should decline (give its fallback), e.g. off-topic or out-of-scope questions. */
+    expectAnswer: boolean("expect_answer").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({ name: "agent_test_cases_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
+    index("agent_test_cases_agent_idx").on(t.agentId, t.orgId),
+    check("agent_test_cases_question_length", sql`char_length(${t.question}) between 3 and 500`),
+  ],
+);
+
+export const testRunStatus = pgEnum("test_run_status", ["running", "passed", "failed", "error"]);
+
+export const agentTestRuns = pgTable(
+  "agent_test_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    configId: uuid("config_id").notNull(),
+    configVersion: integer("config_version").notNull(),
+    status: testRunStatus("status").notNull().default("running"),
+    total: integer("total").notNull(),
+    passed: integer("passed").notNull().default(0),
+    startedBy: uuid("started_by").references(() => users.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({ name: "agent_test_runs_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
+    index("agent_test_runs_agent_idx").on(t.agentId, t.startedAt),
+  ],
+);
+
+export const agentTestResults = pgTable(
+  "agent_test_results",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => agentTestRuns.id, { onDelete: "cascade" }),
+    caseId: uuid("case_id").references(() => agentTestCases.id, { onDelete: "set null" }),
+    question: text("question").notNull(),
+    passed: boolean("passed").notNull(),
+    reasons: jsonb("reasons").$type<string[]>().notNull().default([]),
+    answerExcerpt: text("answer_excerpt"),
+    inferenceId: uuid("inference_id").references(() => inferenceRecords.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("agent_test_results_run_idx").on(t.runId)],
+);
+
+// ─── Channel connectors ───────────────────────────────────────────────────────
+
+export const connectorPlatform = pgEnum("connector_platform", ["telegram", "discord", "slack", "whatsapp", "zendesk"]);
+export type ConnectorPlatform = (typeof connectorPlatform.enumValues)[number];
+export const connectorStatus = pgEnum("connector_status", ["active", "paused", "error"]);
+
+/**
+ * A business's connection of one agent to an external platform (bot, workspace, number, helpdesk).
+ * Credentials are AES-256-GCM encrypted with an app-level key and never sent to the browser.
+ */
+export const channelConnections = pgTable(
+  "channel_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull(),
+    agentId: uuid("agent_id").notNull(),
+    platform: connectorPlatform("platform").notNull(),
+    status: connectorStatus("status").notNull().default("active"),
+    /** Public, non-secret identity shown in the UI (e.g. "@NimbusBot", workspace name, phone number). */
+    label: text("label").notNull(),
+    /** Platform-side id used to route inbound events (bot id, guild id, team id, phone number id, subdomain). */
+    externalId: text("external_id").notNull(),
+    /** "webhook" (production) or "polling" (local development, Telegram only). */
+    deliveryMode: text("delivery_mode").notNull().default("webhook"),
+    credentialsEncrypted: text("credentials_encrypted").notNull(),
+    lastError: text("last_error"),
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({ name: "channel_connections_agent_org_fk", columns: [t.agentId, t.orgId], foreignColumns: [agents.id, agents.orgId] }).onDelete("cascade"),
+    unique("channel_connections_platform_external_unique").on(t.platform, t.externalId),
+    index("channel_connections_agent_idx").on(t.agentId, t.orgId),
+    check("channel_connections_label_length", sql`char_length(${t.label}) between 1 and 120`),
+    check("channel_connections_delivery_mode", sql`${t.deliveryMode} in ('webhook', 'polling')`),
+  ],
+);
+
+/** Idempotency for inbound platform events (webhooks are retried). Rows older than a few days can be purged. */
+export const connectorEvents = pgTable(
+  "connector_events",
+  {
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => channelConnections.id, { onDelete: "cascade" }),
+    eventKey: text("event_key").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.connectionId, t.eventKey] }), index("connector_events_received_idx").on(t.receivedAt)],
+);
+
+// ─── Abuse controls ───────────────────────────────────────────────────────────
+
+/**
+ * Fixed-window rate-limit counters for public endpoints. `key` is a namespaced, hashed identifier
+ * (e.g. `chat:visitor:<sha256>`); raw IPs or tokens are never stored.
+ */
+export const rateLimitBuckets = pgTable(
+  "rate_limit_buckets",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] }), index("rate_limit_buckets_window_idx").on(t.windowStart)],
+);
+
 export const messageRole = pgEnum("message_role", ["user", "assistant"]);
 
 export type Citation = {
@@ -444,6 +679,10 @@ export const messages = pgTable(
     inferenceId: uuid("inference_id").references(() => inferenceRecords.id, { onDelete: "set null" }),
     /** True when the agent's fallback answer was shown instead of model output. */
     isFallback: boolean("is_fallback").notNull().default(false),
+    /** User messages: how the question arrived. The audio/image itself is never stored. */
+    attachmentKind: text("attachment_kind"),
+    /** User messages: the 0G inference that turned the attachment into text (transcription or screenshot reading). */
+    preInferenceId: uuid("pre_inference_id").references(() => inferenceRecords.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -454,18 +693,7 @@ export const messages = pgTable(
     }).onDelete("cascade"),
     index("messages_conversation_time_idx").on(t.conversationId, t.createdAt),
     check("messages_content_length", sql`char_length(${t.content}) <= 20000`),
+    check("messages_attachment_kind", sql`${t.attachmentKind} is null or ${t.attachmentKind} in ('voice', 'image')`),
   ],
 );
 
-// ─── Rate limiting ────────────────────────────────────────────────────────────
-
-/** Fixed-window counters for public endpoints. Keys never contain raw IPs (salted hashes only). */
-export const rateLimitBuckets = pgTable(
-  "rate_limit_buckets",
-  {
-    key: text("key").notNull(),
-    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
-    count: integer("count").notNull().default(0),
-  },
-  (t) => [primaryKey({ columns: [t.key, t.windowStart] }), index("rate_limit_buckets_window_idx").on(t.windowStart)],
-);
