@@ -11,7 +11,7 @@ export async function embedAllowedOrigins(slug: string): Promise<string[]> {
   const hit = cache.get(slug);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.origins;
   if (!process.env.DATABASE_URL) return [];
-  sql ??= postgres(process.env.DATABASE_URL, { max: 2, prepare: false });
+  sql ??= postgres(process.env.DATABASE_URL, { max: 1, prepare: false, idle_timeout: 20 });
   try {
     const rows = await sql<{ allowed_origins: string[] }[]>`
       select allowed_origins from agents where slug = ${slug} and status = 'published' limit 1`;
