@@ -67,7 +67,35 @@ export type CatalogResult =
  * Chat models plus live per-trust-mode availability for TEE-capable models.
  * (Availability is only fetched for TEE models; standard-only models are checked by the Router at request time.)
  */
+const FRESH_MS = 10 * 60 * 1000;
+let memo: { at: number; result: CatalogResult } | null = null;
+let inflight: Promise<CatalogResult> | null = null;
+
+function refresh(): Promise<CatalogResult> {
+  inflight ??= loadModelCatalog()
+    .then((result) => {
+      if (result.ok && !result.staleSince) memo = { at: Date.now(), result };
+      return result;
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+
+/**
+ * Stale-while-revalidate per server instance: pages and chats get the in-memory catalog instantly; it's refreshed
+ * from 0G in the background every 10 minutes. Only an instance's very first call waits for 0G.
+ */
 export async function getModelCatalog(): Promise<CatalogResult> {
+  if (memo) {
+    if (Date.now() - memo.at > FRESH_MS) void refresh().catch(() => {});
+    return memo.result;
+  }
+  return refresh();
+}
+
+async function loadModelCatalog(): Promise<CatalogResult> {
   try {
     const models = await fetchChatModels();
     const teeModels = models.filter((m) => m.verifiability !== null);
