@@ -76,7 +76,8 @@ Deferred: live spikes (need key), streaming (D14), independent verification (str
 Done: publish / pause / resume (Deploy tab), public chat page `/a/[slug]`, widget (`public/widget.js` + `/embed/[slug]` iframe), public chat API with visitor-token ownership and rate limits, **public proof receipt** `/proof/[inferenceId]` (inference metadata + verification checks, never content) with **in-browser verification** (the visitor's browser reads 0G Chain and the provider signature directly), demo seed `pnpm seed:demo`. Tests: `tests/public.test.ts`.
 Also done: **knowledge-gap inbox** (Inbox tab + org overview card): questions answered with the fallback are recorded, near-duplicates merged by embedding similarity (threshold calibrated live), and one click turns an answer into an indexed FAQ.
 Also done: **voice notes and screenshots** in the public chat and widget (whisper-large-v3 and the agent's vision model on 0G, each step with its own proof receipt), safe Markdown rendering of answers.
-Not yet: widget origin allow-list + `frame-ancestors` CSP; voice/screenshots in the dashboard playground.
+Also done (merged from main): widget origin allow-list with `frame-ancestors` CSP, unpublish/resume, security headers, the `/demo/<slug>` widget demo page, and a resilient model catalog (last good list if 0G is slow). The earlier `/v/<id>` verification URLs redirect to `/proof/<id>`.
+Not yet: voice/screenshots in the dashboard playground.
 
 Original scope:
 

@@ -40,6 +40,7 @@ async function AgentBuilder({ params }: { params: Params }) {
     ? {
         ok: true,
         availability: catalogResult.availability,
+        staleSince: catalogResult.staleSince,
         models: catalogResult.models.map(({ id, name, verifiability, contextLength, pricingUsd, trustModes }) => ({
           id,
           name,
@@ -121,7 +122,16 @@ async function AgentBuilder({ params }: { params: Params }) {
                   </Link>
                 }
               />
-              <NextStep icon={Globe} title="Publish" body="Public chat page and website widget." />
+              <NextStep
+                icon={Globe}
+                title="Publish"
+                available
+                body={
+                  <Link href={`/dashboard/${scope.orgSlug}/agents/${agent.slug}/deploy`} className="underline-offset-4 hover:underline">
+                    Public chat page and website widget →
+                  </Link>
+                }
+              />
               <NextStep
                 icon={Fingerprint}
                 title="ENS identity"

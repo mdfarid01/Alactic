@@ -142,6 +142,8 @@ export const agents = pgTable(
     status: agentStatus("status").notNull().default("draft"),
     /** Currently published (immutable) config version, if any. Integrity enforced by a composite FK in SQL. */
     publishedConfigId: uuid("published_config_id"),
+    /** Origins allowed to embed the website widget (CSP frame-ancestors), e.g. https://shop.example.com. */
+    allowedOrigins: text("allowed_origins").array().notNull().default(sql`'{}'::text[]`),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -349,6 +351,7 @@ export const conversations = pgTable(
     unique("conversations_tenant_unique").on(t.id, t.agentId, t.orgId),
     index("conversations_agent_recent_idx").on(t.agentId, t.lastMessageAt),
     index("conversations_external_ref_idx").on(t.agentId, t.channel, t.externalRef),
+    check("conversations_public_needs_visitor", sql`${t.channel} not in ('web', 'widget') or ${t.visitorTokenHash} is not null`),
   ],
 );
 
@@ -693,3 +696,4 @@ export const messages = pgTable(
     check("messages_attachment_kind", sql`${t.attachmentKind} is null or ${t.attachmentKind} in ('voice', 'image')`),
   ],
 );
+

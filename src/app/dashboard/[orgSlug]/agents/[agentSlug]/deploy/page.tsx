@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink, Receipt } from "lucide-react";
-import { CopyField, PublishButtons } from "@/components/agents/deploy-controls";
+import { CopyField, OriginsForm, PublishButtons } from "@/components/agents/deploy-controls";
 import { TrustBadge } from "@/components/agents/trust-badge";
 import { VerificationBadge } from "@/components/agents/verification-badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -111,10 +111,20 @@ async function Deploy({ params }: { params: Params }) {
           </CardHeader>
           <CardContent className="space-y-2">
             <CopyField value={snippet} label="widget snippet" multiline />
-            <p className="text-xs text-muted-foreground">
-              The widget runs in an isolated iframe served by Alactic, so no keys or styles leak into your site. Origin allow-listing is not implemented yet:
-              the widget can currently be embedded on any website (rate limits still apply).
-            </p>
+            <p className="text-xs text-muted-foreground">The widget runs in an isolated iframe served by Alactic, so no keys or styles leak into your site.</p>
+            <Link href={`/demo/${agent.slug}`} target="_blank" className="text-xs underline underline-offset-4">
+              Try it on a demo store page
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sites allowed to embed the widget</CardTitle>
+            <CardDescription>Leave empty to allow only Alactic&apos;s own pages.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <OriginsForm orgSlug={scope.orgSlug} agentSlug={agent.slug} origins={agent.allowedOrigins} canEdit={roleAtLeast(scope.role, "admin")} />
           </CardContent>
         </Card>
       </div>

@@ -1,6 +1,7 @@
 /*! Alactic widget loader. Injects a chat bubble and an isolated iframe served by Alactic. */
 (function () {
-  var script = document.currentScript;
+  // document.currentScript is null when the tag is injected by a framework loader (e.g. next/script).
+  var script = document.currentScript || document.querySelector('script[data-agent][src*="widget.js"]');
   if (!script) return;
   var slug = script.getAttribute("data-agent");
   if (!slug || !/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/.test(slug)) {
@@ -9,7 +10,7 @@
   }
   if (window.__alacticWidget) return;
   window.__alacticWidget = true;
-  var origin = new URL(script.src).origin;
+  var origin = new URL(script.src, location.href).origin;
   var color = script.getAttribute("data-color") || "#111827";
 
   var frame = document.createElement("iframe");

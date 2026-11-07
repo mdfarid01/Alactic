@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Check, Copy, Pause, Play, Rocket } from "lucide-react";
+import { useActionState, useState, useTransition } from "react";
+import { Check, Copy, Loader2, Pause, Play, Rocket } from "lucide-react";
+import { saveOriginsAction, type DeployState } from "@/app/dashboard/[orgSlug]/agents/[agentSlug]/deploy/actions";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { publishAgentAction, setAgentLiveAction } from "@/app/dashboard/[orgSlug]/agents/actions";
 import { Button } from "@/components/ui/button";
@@ -89,5 +91,32 @@ export function CopyField({ value, label, multiline = false }: { value: string; 
         {copied ? <Check /> : <Copy />}
       </Button>
     </div>
+  );
+}
+
+/** Sites allowed to embed the widget (CSP frame-ancestors on /embed/<slug>). From main, by the widget allow-list work. */
+export function OriginsForm({ orgSlug, agentSlug, origins, canEdit }: { orgSlug: string; agentSlug: string; origins: string[]; canEdit: boolean }) {
+  const [state, action, pending] = useActionState<DeployState, FormData>(saveOriginsAction.bind(null, orgSlug, agentSlug), undefined);
+  return (
+    <form action={action} className="grid gap-3">
+      <Textarea
+        name="origins"
+        rows={3}
+        defaultValue={origins.join("\n")}
+        disabled={!canEdit}
+        placeholder={"https://www.yourshop.com\nhttps://help.yourshop.com"}
+        className="font-mono text-xs"
+      />
+      <p className="text-xs text-muted-foreground">
+        One site per line, e.g. <span className="font-mono">https://www.yourshop.com</span>. Browsers will refuse to show the widget on any other site.
+        Alactic&apos;s own pages (including the demo page) are always allowed.
+      </p>
+      {state?.error ? <p className="text-sm text-destructive">{state.error}</p> : state?.message ? <p className="text-sm text-success">{state.message}</p> : null}
+      {canEdit ? (
+        <Button type="submit" variant="outline" disabled={pending} className="justify-self-start">
+          {pending ? <Loader2 className="animate-spin" /> : null} Save sites
+        </Button>
+      ) : null}
+    </form>
   );
 }

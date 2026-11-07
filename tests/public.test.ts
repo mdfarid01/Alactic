@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { upsertWalletUser } from "@/server/auth/sessions";
-import { createAgent, publishDraft, setAgentLive } from "@/server/agents/service";
+import { createAgent, normalizeOrigin, publishDraft, resumeAgent, setAgentLive, unpublishAgent, updateAllowedOrigins } from "@/server/agents/service";
+import { frameAncestorsHeader } from "@/server/public/embed-policy";
 import { recentPublicAnswers } from "@/server/deploy/service";
 import { chunkPendingDocuments, embedNextBatch, finalizeRun, loadRun } from "@/server/knowledge/pipeline";
 import { addFaqSource, resolveAgent } from "@/server/knowledge/service";
-import { authorizeOrg, createOrganization, type OrgScope } from "@/server/orgs/service";
+import { addMemberByWallet, authorizeOrg, createOrganization, type OrgScope } from "@/server/orgs/service";
 import { toPublicReply } from "@/server/public/reply";
 import { getPublicAgent, getPublicProof } from "@/server/public/service";
 import { consumeRateLimits } from "@/server/ratelimit/limiter";
@@ -166,5 +167,60 @@ describe("rate limiter", () => {
     );
     expect(d).toMatchObject({ ok: false, key: "test:ip" });
     expect(await consumeRateLimits(db, [{ key: "test:other", limit: 1, windowSeconds: 60 }], t0)).toEqual({ ok: true });
+  });
+});
+
+// Ported from main (widget allowed sites, unpublish/resume), adapted to the merged runtime.
+describe("unpublish / resume and widget allowed sites", () => {
+  let member: OrgScope;
+  beforeEach(async () => {
+    const bob = privateKeyToAccount(generatePrivateKey());
+    await addMemberByWallet(db, acme, { address: bob.address, role: "member" });
+    member = (await authorizeOrg(db, await upsertWalletUser(db, bob.address), "acme"))!;
+  });
+
+  it("unpublish takes it offline; resume brings back the same version; members can't do either", async () => {
+    await publishDraft(db, acme, "acme-support");
+    await expect(unpublishAgent(db, member, "acme-support")).rejects.toMatchObject({ code: "forbidden" });
+    await expect(unpublishAgent(db, evil, "acme-support")).rejects.toMatchObject({ code: "not_found" });
+    await unpublishAgent(db, acme, "acme-support");
+    expect(await getPublicAgent(db, "acme-support")).toBeNull();
+    await resumeAgent(db, acme, "acme-support");
+    expect(await getPublicAgent(db, "acme-support")).toMatchObject({ version: 1 });
+  });
+
+  it.each([
+    ["https://shop.example.com", "https://shop.example.com"],
+    ["https://shop.example.com/", "https://shop.example.com"],
+    ["http://localhost:5173", "http://localhost:5173"],
+    ["http://shop.example.com", null],
+    ["https://shop.example.com/path", null],
+    ["https://evil.com; script-src *", null],
+    ["javascript:alert(1)", null],
+    ["https://intranet", null],
+  ])("normalizeOrigin(%s) → %s", (input, expected) => {
+    expect(normalizeOrigin(input)).toBe(expected);
+  });
+
+  it("stores normalized, de-duplicated origins; rejects bad ones; only editors of the org", async () => {
+    expect(await updateAllowedOrigins(db, acme, "acme-support", ["https://a.example.com/", "https://a.example.com", "", "https://b.example.com"])).toEqual([
+      "https://a.example.com",
+      "https://b.example.com",
+    ]);
+    await expect(updateAllowedOrigins(db, acme, "acme-support", ["https://x.com; frame-ancestors *"])).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(updateAllowedOrigins(db, member, "acme-support", [])).rejects.toMatchObject({ code: "forbidden" });
+    await expect(updateAllowedOrigins(db, evil, "acme-support", [])).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("builds the CSP header", () => {
+    expect(frameAncestorsHeader([])).toBe("frame-ancestors 'self'");
+    expect(frameAncestorsHeader(["https://a.example.com"])).toBe("frame-ancestors 'self' https://a.example.com");
+  });
+
+  it("public channels require a visitor identity", async () => {
+    await publishDraft(db, acme, "acme-support");
+    await expect(
+      runAgent(deps(chat()), { agent: agentRef, configVersion: "published", channel: "widget", userMessage: "What is the refund policy after delivery?" }),
+    ).rejects.toMatchObject({ code: "invalid_message" });
   });
 });

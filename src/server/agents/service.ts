@@ -373,3 +373,57 @@ function isUniqueViolation(error: unknown): boolean {
   const e = error as { code?: string; cause?: { code?: string } };
   return e?.code === "23505" || e?.cause?.code === "23505";
 }
+
+/** Validate an origin for widget embedding: https (or http://localhost for development), no path. */
+export function normalizeOrigin(input: string): string | null {
+  try {
+    const u = new URL(input.trim());
+    if (u.username || u.password || (u.pathname !== "/" && u.pathname !== "") || u.search || u.hash) return null;
+    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) return null;
+    if (!local && !u.hostname.includes(".")) return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateAllowedOrigins(db: Database, scope: OrgScope, slug: string, origins: string[]) {
+  requireEditor(scope);
+  const cleaned: string[] = [];
+  for (const o of origins.map((x) => x.trim()).filter(Boolean)) {
+    const n = normalizeOrigin(o);
+    if (!n) throw new AgentError("invalid_input", `“${o.slice(0, 80)}” isn't a valid site address. Use e.g. https://shop.example.com`, { allowedOrigins: "Invalid origin" });
+    if (!cleaned.includes(n)) cleaned.push(n);
+  }
+  if (cleaned.length > 10) throw new AgentError("invalid_input", "Up to 10 sites can embed the widget.");
+  const rows = await db
+    .update(agents)
+    .set({ allowedOrigins: cleaned, updatedAt: new Date() })
+    .where(and(eq(agents.orgId, scope.orgId), eq(agents.slug, slug)))
+    .returning({ id: agents.id });
+  if (!rows.length) throw new AgentError("not_found", "Agent not found");
+  return cleaned;
+}
+
+/** Take the agent offline (public page, widget and channels stop answering). Its versions are kept. */
+export async function unpublishAgent(db: Database, scope: OrgScope, slug: string) {
+  requireEditor(scope);
+  const rows = await db
+    .update(agents)
+    .set({ status: "paused", updatedAt: new Date() })
+    .where(and(eq(agents.orgId, scope.orgId), eq(agents.slug, slug), eq(agents.status, "published")))
+    .returning({ id: agents.id });
+  if (!rows.length) throw new AgentError("not_found", "Agent isn't published");
+}
+
+/** Re-enable a paused agent with its last published version (no new version). */
+export async function resumeAgent(db: Database, scope: OrgScope, slug: string) {
+  requireEditor(scope);
+  const rows = await db
+    .update(agents)
+    .set({ status: "published", updatedAt: new Date() })
+    .where(and(eq(agents.orgId, scope.orgId), eq(agents.slug, slug), eq(agents.status, "paused"), sql`${agents.publishedConfigId} is not null`))
+    .returning({ id: agents.id });
+  if (!rows.length) throw new AgentError("not_found", "Agent can't be resumed");
+}

@@ -5,4 +5,6 @@ CREATE TABLE "rate_limit_buckets" (
 	CONSTRAINT "rate_limit_buckets_key_window_start_pk" PRIMARY KEY("key","window_start")
 );
 --> statement-breakpoint
-CREATE INDEX "rate_limit_buckets_window_idx" ON "rate_limit_buckets" USING btree ("window_start");
+ALTER TABLE "agents" ADD COLUMN "allowed_origins" text[] DEFAULT '{}'::text[] NOT NULL;--> statement-breakpoint
+CREATE INDEX "rate_limit_buckets_window_idx" ON "rate_limit_buckets" USING btree ("window_start");--> statement-breakpoint
+ALTER TABLE "conversations" ADD CONSTRAINT "conversations_public_needs_visitor" CHECK ("conversations"."channel" not in ('web', 'widget') or "conversations"."visitor_token_hash" is not null);

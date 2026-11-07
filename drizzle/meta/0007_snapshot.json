@@ -1,6 +1,6 @@
 {
-  "id": "c4e3dd2b-5edd-46dd-9742-c09a064942eb",
-  "prevId": "79d6fff0-5ba6-4e72-a77c-bc0ae9354b79",
+  "id": "f370ad11-392c-49a0-bc4e-aee4dab857be",
+  "prevId": "d572eff0-13a1-48d2-8bbc-3de7ac7af2a0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -269,6 +269,394 @@
       },
       "isRLSEnabled": false
     },
+    "public.agent_test_cases": {
+      "name": "agent_test_cases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question": {
+          "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "must_include": {
+          "name": "must_include",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "expect_answer": {
+          "name": "expect_answer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_test_cases_agent_idx": {
+          "name": "agent_test_cases_agent_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_test_cases_created_by_users_id_fk": {
+          "name": "agent_test_cases_created_by_users_id_fk",
+          "tableFrom": "agent_test_cases",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_test_cases_agent_org_fk": {
+          "name": "agent_test_cases_agent_org_fk",
+          "tableFrom": "agent_test_cases",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "agent_test_cases_question_length": {
+          "name": "agent_test_cases_question_length",
+          "value": "char_length(\"agent_test_cases\".\"question\") between 3 and 500"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.agent_test_results": {
+      "name": "agent_test_results",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "question": {
+          "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passed": {
+          "name": "passed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reasons": {
+          "name": "reasons",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "answer_excerpt": {
+          "name": "answer_excerpt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inference_id": {
+          "name": "inference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_test_results_run_idx": {
+          "name": "agent_test_results_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_test_results_run_id_agent_test_runs_id_fk": {
+          "name": "agent_test_results_run_id_agent_test_runs_id_fk",
+          "tableFrom": "agent_test_results",
+          "tableTo": "agent_test_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_test_results_case_id_agent_test_cases_id_fk": {
+          "name": "agent_test_results_case_id_agent_test_cases_id_fk",
+          "tableFrom": "agent_test_results",
+          "tableTo": "agent_test_cases",
+          "columnsFrom": [
+            "case_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_test_results_inference_id_inference_records_id_fk": {
+          "name": "agent_test_results_inference_id_inference_records_id_fk",
+          "tableFrom": "agent_test_results",
+          "tableTo": "inference_records",
+          "columnsFrom": [
+            "inference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.agent_test_runs": {
+      "name": "agent_test_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "config_id": {
+          "name": "config_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "config_version": {
+          "name": "config_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "test_run_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "total": {
+          "name": "total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passed": {
+          "name": "passed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "started_by": {
+          "name": "started_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "agent_test_runs_agent_idx": {
+          "name": "agent_test_runs_agent_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_test_runs_started_by_users_id_fk": {
+          "name": "agent_test_runs_started_by_users_id_fk",
+          "tableFrom": "agent_test_runs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "started_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_test_runs_agent_org_fk": {
+          "name": "agent_test_runs_agent_org_fk",
+          "tableFrom": "agent_test_runs",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.agents": {
       "name": "agents",
       "schema": "",
@@ -305,6 +693,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "allowed_origins": {
+          "name": "allowed_origins",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
         },
         "created_by": {
           "name": "created_by",
@@ -459,6 +854,249 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.channel_connections": {
+      "name": "channel_connections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform": {
+          "name": "platform",
+          "type": "connector_platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "connector_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delivery_mode": {
+          "name": "delivery_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'webhook'"
+        },
+        "credentials_encrypted": {
+          "name": "credentials_encrypted",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_event_at": {
+          "name": "last_event_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "channel_connections_agent_idx": {
+          "name": "channel_connections_agent_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "channel_connections_created_by_users_id_fk": {
+          "name": "channel_connections_created_by_users_id_fk",
+          "tableFrom": "channel_connections",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "channel_connections_agent_org_fk": {
+          "name": "channel_connections_agent_org_fk",
+          "tableFrom": "channel_connections",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "channel_connections_platform_external_unique": {
+          "name": "channel_connections_platform_external_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "platform",
+            "external_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "channel_connections_label_length": {
+          "name": "channel_connections_label_length",
+          "value": "char_length(\"channel_connections\".\"label\") between 1 and 120"
+        },
+        "channel_connections_delivery_mode": {
+          "name": "channel_connections_delivery_mode",
+          "value": "\"channel_connections\".\"delivery_mode\" in ('webhook', 'polling')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.connector_events": {
+      "name": "connector_events",
+      "schema": "",
+      "columns": {
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_key": {
+          "name": "event_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "connector_events_received_idx": {
+          "name": "connector_events_received_idx",
+          "columns": [
+            {
+              "expression": "received_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "connector_events_connection_id_channel_connections_id_fk": {
+          "name": "connector_events_connection_id_channel_connections_id_fk",
+          "tableFrom": "connector_events",
+          "tableTo": "channel_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "connector_events_connection_id_event_key_pk": {
+          "name": "connector_events_connection_id_event_key_pk",
+          "columns": [
+            "connection_id",
+            "event_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.conversations": {
       "name": "conversations",
       "schema": "",
@@ -543,6 +1181,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "conversations_external_ref_idx": {
+          "name": "conversations_external_ref_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "channel",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -588,7 +1253,189 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "conversations_public_needs_visitor": {
+          "name": "conversations_public_needs_visitor",
+          "value": "\"conversations\".\"channel\" not in ('web', 'widget') or \"conversations\".\"visitor_token_hash\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.handoff_requests": {
+      "name": "handoff_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "conversation_channel",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contact": {
+          "name": "contact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_inference_id": {
+          "name": "summary_inference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "handoff_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "handoff_requests_org_status_idx": {
+          "name": "handoff_requests_org_status_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "handoff_requests_summary_inference_id_inference_records_id_fk": {
+          "name": "handoff_requests_summary_inference_id_inference_records_id_fk",
+          "tableFrom": "handoff_requests",
+          "tableTo": "inference_records",
+          "columnsFrom": [
+            "summary_inference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "handoff_requests_resolved_by_users_id_fk": {
+          "name": "handoff_requests_resolved_by_users_id_fk",
+          "tableFrom": "handoff_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "resolved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "handoff_requests_conversation_tenant_fk": {
+          "name": "handoff_requests_conversation_tenant_fk",
+          "tableFrom": "handoff_requests",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "conversation_id",
+            "agent_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "agent_id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "handoff_requests_contact_length": {
+          "name": "handoff_requests_contact_length",
+          "value": "\"handoff_requests\".\"contact\" is null or char_length(\"handoff_requests\".\"contact\") <= 200"
+        },
+        "handoff_requests_note_length": {
+          "name": "handoff_requests_note_length",
+          "value": "\"handoff_requests\".\"note\" is null or char_length(\"handoff_requests\".\"note\") <= 1000"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.inference_records": {
@@ -698,6 +1545,12 @@
         "latency_ms": {
           "name": "latency_ms",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_sha256": {
+          "name": "answer_sha256",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1595,6 +2448,18 @@
           "notNull": true,
           "default": false
         },
+        "attachment_kind": {
+          "name": "attachment_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pre_inference_id": {
+          "name": "pre_inference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1640,6 +2505,19 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
+        "messages_pre_inference_id_inference_records_id_fk": {
+          "name": "messages_pre_inference_id_inference_records_id_fk",
+          "tableFrom": "messages",
+          "tableTo": "inference_records",
+          "columnsFrom": [
+            "pre_inference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "messages_conversation_tenant_fk": {
           "name": "messages_conversation_tenant_fk",
           "tableFrom": "messages",
@@ -1665,6 +2543,100 @@
         "messages_content_length": {
           "name": "messages_content_length",
           "value": "char_length(\"messages\".\"content\") <= 20000"
+        },
+        "messages_attachment_kind": {
+          "name": "messages_attachment_kind",
+          "value": "\"messages\".\"attachment_kind\" is null or \"messages\".\"attachment_kind\" in ('voice', 'image')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.org_digests": {
+      "name": "org_digests",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stats": {
+          "name": "stats",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inference_id": {
+          "name": "inference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "org_digests_org_id_organizations_id_fk": {
+          "name": "org_digests_org_id_organizations_id_fk",
+          "tableFrom": "org_digests",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "org_digests_inference_id_inference_records_id_fk": {
+          "name": "org_digests_inference_id_inference_records_id_fk",
+          "tableFrom": "org_digests",
+          "tableTo": "inference_records",
+          "columnsFrom": [
+            "inference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "org_digests_org_id_day_pk": {
+          "name": "org_digests_org_id_day_pk",
+          "columns": [
+            "org_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "org_digests_day_format": {
+          "name": "org_digests_day_format",
+          "value": "\"org_digests\".\"day\" ~ '^\\d{4}-\\d{2}-\\d{2}$'"
         }
       },
       "isRLSEnabled": false
@@ -2237,6 +3209,26 @@
         "empathetic"
       ]
     },
+    "public.connector_platform": {
+      "name": "connector_platform",
+      "schema": "public",
+      "values": [
+        "telegram",
+        "discord",
+        "slack",
+        "whatsapp",
+        "zendesk"
+      ]
+    },
+    "public.connector_status": {
+      "name": "connector_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "paused",
+        "error"
+      ]
+    },
     "public.conversation_channel": {
       "name": "conversation_channel",
       "schema": "public",
@@ -2246,7 +3238,17 @@
         "widget",
         "discord",
         "slack",
-        "zendesk"
+        "zendesk",
+        "telegram",
+        "whatsapp"
+      ]
+    },
+    "public.handoff_status": {
+      "name": "handoff_status",
+      "schema": "public",
+      "values": [
+        "open",
+        "resolved"
       ]
     },
     "public.inference_status": {
@@ -2302,6 +3304,16 @@
         "owner",
         "admin",
         "member"
+      ]
+    },
+    "public.test_run_status": {
+      "name": "test_run_status",
+      "schema": "public",
+      "values": [
+        "running",
+        "passed",
+        "failed",
+        "error"
       ]
     },
     "public.trust_mode": {

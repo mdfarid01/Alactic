@@ -131,7 +131,11 @@ export async function runAgent(deps: RunAgentDeps, input: RunAgentInput): Promis
   const config = await loadConfig(db, input.agent, input.configVersion);
   if (!config) throw new RunAgentError("agent_not_found", "Agent not found.");
 
-  // Conversation (must belong to this agent, org and channel).
+  // Public web/widget chats always belong to an anonymous visitor (also enforced by a DB check constraint).
+  const isPublic = input.channel === "web" || input.channel === "widget";
+  if (isPublic && !input.visitorTokenHash) throw new RunAgentError("invalid_message", "Missing visitor session. Reload the page.");
+
+  // Conversation (must belong to this agent, org and channel, and for public channels to this visitor).
   let conversationId = input.conversationId ?? null;
   if (conversationId) {
     const [c] = await db

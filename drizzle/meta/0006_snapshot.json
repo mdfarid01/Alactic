@@ -1,5 +1,5 @@
 {
-  "id": "79d6fff0-5ba6-4e72-a77c-bc0ae9354b79",
+  "id": "d572eff0-13a1-48d2-8bbc-3de7ac7af2a0",
   "prevId": "10853b10-9878-417b-a151-754981a4d745",
   "version": "7",
   "dialect": "postgresql",
@@ -306,6 +306,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "allowed_origins": {
+          "name": "allowed_origins",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -588,7 +595,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "conversations_public_needs_visitor": {
+          "name": "conversations_public_needs_visitor",
+          "value": "\"conversations\".\"channel\" not in ('web', 'widget') or \"conversations\".\"visitor_token_hash\" is not null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.inference_records": {
